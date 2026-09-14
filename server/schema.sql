@@ -1,0 +1,3 @@
+-- Eternastone 珠宝线上电商使用 Supabase Postgres。
+-- 请打开 Supabase 后台的 SQL Editor，把 server/supabase-schema.sql 的完整内容复制进去执行。
+-- 这个文件只作为说明保留，避免误执行旧 MySQL 建表脚本。
