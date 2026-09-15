@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BadgeCheck,
   ChevronDown,
   CreditCard,
   Diamond,
@@ -7,6 +8,9 @@ import {
   LayoutDashboard,
   Menu,
   PackagePlus,
+  Plane,
+  RotateCcw,
+  Ruler,
   Search,
   ShieldCheck,
   ShoppingBag,
@@ -16,7 +20,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
-import { deleteStorefrontProduct, fetchStorefrontProducts, getAdminApiToken, saveStorefrontProduct, setAdminApiToken, uploadProductImage } from "./api.js";
+import { addMyFavorite, capturePayPalOrder, createPayPalOrder, createStorefrontOrder, deleteMyAddress, deleteStorefrontProduct, fetchAdminAnalyticsSummary, fetchAdminOrders, fetchMyAddresses, fetchMyFavorites, fetchMyOrders, fetchStorefrontProducts, getAdminApiToken, lookupGuestOrders, saveMyAddress, saveStorefrontProduct, sendPasswordRecovery, setAdminApiToken, signInWithEmail, signUpWithEmail, trackAnalyticsEvent, updateAdminOrder, uploadProductImage } from "./api.js";
 import {
   categories,
   certificates,
@@ -39,7 +43,9 @@ const formatArrivalDate = (days = 23) => {
   return date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
 };
 
-const FRONTEND_PRODUCTS_STORAGE_KEY = "eternastone.frontend.products";
+const FRONTEND_PRODUCTS_STORAGE_KEY = "everastone.frontend.products";
+const CUSTOMER_SESSION_STORAGE_KEY = "everastone.customer.session";
+const ANALYTICS_SESSION_STORAGE_KEY = "everastone.analytics.sessionId";
 const readSharedFrontendProducts = () => {
   try {
     const stored = window.localStorage.getItem(FRONTEND_PRODUCTS_STORAGE_KEY);
@@ -48,6 +54,32 @@ const readSharedFrontendProducts = () => {
     return [];
   }
 };
+
+const getAnalyticsSessionId = () => {
+  let sessionId = window.localStorage.getItem(ANALYTICS_SESSION_STORAGE_KEY);
+  if (!sessionId) {
+    sessionId = `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(ANALYTICS_SESSION_STORAGE_KEY, sessionId);
+  }
+  return sessionId;
+};
+
+const updateSeoMeta = ({ title, description }) => {
+  document.title = title;
+  const ensureMeta = (selector, attributes) => {
+    let element = document.head.querySelector(selector);
+    if (!element) {
+      element = document.createElement("meta");
+      Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+      document.head.appendChild(element);
+    }
+    return element;
+  };
+  ensureMeta('meta[name="description"]', { name: "description" }).setAttribute("content", description);
+  ensureMeta('meta[property="og:title"]', { property: "og:title" }).setAttribute("content", title);
+  ensureMeta('meta[property="og:description"]', { property: "og:description" }).setAttribute("content", description);
+  ensureMeta('meta[property="og:type"]', { property: "og:type" }).setAttribute("content", "website");
+};
 const mergeProductsById = (base, additions) => {
   const merged = new Map(base.map((product) => [product.id, product]));
   additions.forEach((product) => merged.set(product.id, { ...merged.get(product.id), ...product }));
@@ -55,6 +87,7 @@ const mergeProductsById = (base, additions) => {
 };
 
 const shapeLabel = (key) => shapes.find((shape) => shape.key === key)?.zh ?? key;
+const shapeLabelEn = (key) => shapes.find((shape) => shape.key === key)?.label ?? key;
 const shapeKeyFromLabel = (value) => shapes.find((shape) => shape.zh === value || shape.key === value)?.key ?? "round";
 const materialImageGroups = [
   { key: "whiteGold", label: "铂金", keywords: ["白金", "white", "platinum", "铂金", "pt", "925"] },
@@ -101,6 +134,22 @@ const getPrimaryProductImage = (product = {}) => {
   const firstMaterialImage = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).find(Boolean);
   return firstMaterialImage || product.images?.[0] || product.image || shapes.find((shape) => shape.key === product.shape)?.image;
 };
+const orderedCatalogShapeKeys = ["oval", "round", "marquise", "emerald", "princess"];
+const catalogShapes = [
+  ...orderedCatalogShapeKeys.map((key) => shapes.find((shape) => shape.key === key)).filter(Boolean),
+  ...shapes.filter((shape) => !orderedCatalogShapeKeys.includes(shape.key))
+];
+const getAvailableMaterialGroups = (product = {}) => {
+  const materialImages = product.materialImages ?? {};
+  const groupsFromImages = materialImageGroups.filter((group) => (materialImages[group.key] ?? []).filter(Boolean).length);
+  const materialKeys = new Set([
+    product.material ? getMaterialImageGroup(product.material) : "",
+    ...(product.variants ?? []).map((variant) => getMaterialImageGroup(variant.material))
+  ].filter(Boolean));
+  const groupsFromProperties = materialImageGroups.filter((group) => materialKeys.has(group.key));
+  const available = groupsFromImages.length ? groupsFromImages : groupsFromProperties;
+  return available.length ? available : [materialImageGroups[0]];
+};
 const getYouTubeEmbedUrl = (url = "") => {
   const value = String(url).trim();
   const match = value.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/);
@@ -108,7 +157,6 @@ const getYouTubeEmbedUrl = (url = "") => {
 };
 const diamondFaceUpMm = {
   round: [6.5, 6.5],
-  cushion: [6.1, 6.1],
   emerald: [5.0, 7.0],
   pear: [5.8, 8.6],
   asscher: [5.5, 5.5],
@@ -131,7 +179,9 @@ const getTryOnDiamondSize = (shape, carat) => {
     height: Math.round(heightMm * scale * pxPerMm)
   };
 };
-const heroRingImage = new URL("./assets/hengshi-hero-ring.png", import.meta.url).href;
+const heroRingImage = new URL("./assets/everastone-hero-ring.png", import.meta.url).href;
+const warmGoldHero = new URL("./assets/everastone-hero-warm-gold.png", import.meta.url).href;
+const whatsappDesignerQr = new URL("./assets/whatsapp-designer-qr.png", import.meta.url).href;
 const pageToPath = {
   home: "/",
   diamonds: "/diamonds",
@@ -149,10 +199,7 @@ const contentPaths = {
   coupleDiamond: "/couple-rings/diamond-pairs",
   coupleMinimal: "/couple-rings/minimal-slim",
   coupleVintage: "/couple-rings/vintage-engraved",
-  jewelry: "/daily-jewelry",
-  earrings: "/daily-jewelry/earrings",
-  necklaces: "/daily-jewelry/necklaces",
-  bracelets: "/daily-jewelry/bracelets",
+  designer: "/designer-styles",
   custom: "/custom-ring",
   customProcess: "/custom-ring/process",
   customDiamond: "/custom-ring/choose-diamond",
@@ -166,11 +213,146 @@ const contentPaths = {
   settingHalo: "/collection/halo-settings",
   settingPave: "/collection/pave-settings",
   settingThreeStone: "/collection/three-stone-settings",
-  settingVintage: "/collection/vintage-settings"
+  settingVintage: "/collection/vintage-settings",
+  shipping: "/shipping-policy",
+  returns: "/returns-policy",
+  warranty: "/warranty-policy",
+  terms: "/terms-of-service",
+  privacy: "/privacy"
 };
 
 const contentKeyFromPath = (pathname) =>
   Object.entries(contentPaths).find(([, path]) => pathname === path)?.[0] ?? "couple";
+
+const homeCopy = {
+  ticker: [
+    {
+      original: "已服务 8,668 人，越来越多新人选择 everastone。",
+      zh: "已有 8668 对新人信赖我们，无数挚爱选择 everastone 定格永恒承诺",
+      en: (count) => `Trusted by over ${count.toLocaleString("en-US")} couples. Countless lovers choose everastone for their lifelong promise.`
+    },
+    {
+      original: "首单享受 10% 折扣，定制钻戒也可享受。",
+      zh: "首单享受折扣 10%",
+      en: "Enjoy 10% off your first order."
+    },
+    {
+      original: "制作+配送周期约 23 天，可加急处理。",
+      zh: "制作+配送周期 23 天（可加急）",
+      en: "Production and delivery take about 23 days. Rush service is available."
+    }
+  ],
+  hero: {
+    eyebrow: {
+      original: "高级培育钻石定制工作室",
+      zh: "为每一段独一无二的爱情，打造专属于你们的永恒婚戒",
+      en: "Created for a love that is entirely your own"
+    },
+    title: { original: "everastone", zh: "为你们的爱情故事打造永恒婚戒", en: "Made for Your Love Story" },
+    subtitle: {
+      original: "定制订婚戒指与高级培育钻石珠宝",
+      zh: "高级实验室培育钻石定制工坊",
+      en: "Bespoke Lab-Grown Diamond Atelier"
+    },
+    text: {
+      original: "为美国与英国客户手工定制。甄选伦理培育钻石，坚持按需设计与精工制作。",
+      zh: "我们为海外挚爱提供完整定制服务。严选可溯源伦理培育钻石，每一枚戒指，都围绕你们独有的爱情故事独立设计、精工雕琢。",
+      en: "Handcrafting engagement rings and heirloom lab-grown diamond jewelry with traceable ethical stones, each piece designed around the story only you two share."
+    },
+    primaryCta: { original: "选购订婚戒指", zh: "选购订婚戒指", en: "Shop Engagement Rings" },
+    secondaryCta: { original: "定制专属钻戒", zh: "定制专属钻戒", en: "Create a Bespoke Ring" }
+  },
+  shapes: {
+    title: {
+      original: "找到最适合你的主钻轮廓",
+      zh: "找到专属于你的钻石轮廓",
+      en: "Find the Diamond Shape That Feels Like Yours"
+    },
+    intro: {
+      original: "挑选你的主钻形状，开启培育钻戒定制第一步",
+      zh: "每一种钻石切形，都藏着独属于你的浪漫风格。选定主钻造型，开启你们的钻戒定制之旅。",
+      en: "Every diamond shape carries a different kind of romance. Choose the silhouette that begins your ring story."
+    },
+    itemPrefix: { original: "查看", zh: "探索", en: "Explore" },
+    itemSuffix: { original: "戒指", zh: "戒指", en: "rings" }
+  },
+  popular: {
+    eyebrow: { original: "Best-Selling Searches", zh: "热门钻石规格", en: "Most-Loved Diamond Sizes" },
+    title: {
+      original: "欧美客户热门钻石规格",
+      zh: "广受海外新人喜爱的钻石规格",
+      en: "Diamond Sizes Loved by Couples Worldwide"
+    },
+    intro: {
+      original: "一键进入对应培育钻石筛选条件，快速挑选主石与戒托。",
+      zh: "参考众多海外新人青睐的克拉区间，一键筛选适配你的理想主石与戒托",
+      en: "Start with carat ranges many couples love, then refine the center stone and setting that feel right for you."
+    }
+  },
+  process: {
+    eyebrow: { original: "Custom Process", zh: "专属定制流程", en: "Bespoke Process" },
+    title: { original: "三步完成专属定制", zh: "三步，打造你的专属钻戒", en: "Three Steps to Your One-of-a-Kind Ring" },
+    steps: [
+      {
+        original: ["01", "选择培育钻石", "按形状、克拉、颜色、净度与证书筛选理想主石。"],
+        zh: ["01", "挑选培育钻石", "按形状、克拉、颜色、净度、权威证书，筛选契合你的理想主石"],
+        en: ["01", "Choose Your Diamond", "Filter by shape, carat, color, clarity and certificate to find the center stone that fits your story."]
+      },
+      {
+        original: ["02", "设计戒托方案", "选择金属材质、戒指尺码与适合日常佩戴的比例。"],
+        zh: ["02", "定制戒托方案", "选定贵金属材质、戒指圈号，平衡美观与日常佩戴舒适感"],
+        en: ["02", "Design the Setting", "Select the metal, ring size and proportions that balance beauty with everyday comfort."]
+      },
+      {
+        original: ["03", "制作并配送", "工坊按订单制作，完成质检后为英美客户保价配送。"],
+        zh: ["03", "精工制作 & 安心配送", "匠人纯手工打造，多重质检完毕，提供全境保价配送服务"],
+        en: ["03", "Handcrafted and Securely Delivered", "Your ring is made by hand, carefully inspected, and shipped with insured delivery."]
+      }
+    ]
+  },
+  labGrown: {
+    eyebrow: { original: "Why Lab Grown", zh: "培育钻石价值", en: "Why Lab-Grown" },
+    title: {
+      original: "同样闪耀，更适合现代高级珠宝定制",
+      zh: "同等璀璨火光，更适配当代恋人的浪漫选择",
+      en: "The Same Fire, Made for Modern Love"
+    },
+    text: {
+      original: "培育钻石拥有与天然钻石相同的碳晶体结构与火彩表现，同时让客户在预算、尺寸、净度与伦理选择上拥有更高自由度。",
+      zh: "实验室培育钻石拥有和天然钻石完全一致的晶体结构与闪耀火彩，让你在预算、尺寸、品质、道德理念之间拥有完整选择权。",
+      en: "Lab-grown diamonds share the same crystal structure and brilliance as mined diamonds, giving you more freedom across size, quality, budget and values."
+    },
+    panelTitle: {
+      original: "甄选实验室培育钻石",
+      zh: "严苛甄选实验室培育钻石",
+      en: "Strictly Selected Lab-Grown Diamonds"
+    },
+    panelText: {
+      original: "每颗主石均可录入形状、克拉、颜色、净度、切工、抛光、对称、证书与荧光等专业参数。",
+      zh: "每颗主石附带完整可核验参数：形状、克拉、颜色、净度、切工、抛光、对称、权威证书、荧光等级。",
+      en: "Each center stone includes verifiable details: shape, carat, color, clarity, cut, polish, symmetry, certificate and fluorescence grade."
+    }
+  },
+  footer: {
+    brandText: {
+      original: "面向美国与英国客户的高级培育钻石设计师珠宝品牌。",
+      zh: "专注为全球挚爱打造高级培育钻石设计师珠宝",
+      en: "Designer lab-grown diamond jewelry for love stories around the world."
+    },
+    slogan: {
+      original: "Crafted for love, built for eternity.",
+      zh: "为爱雕琢，为永恒而生。",
+      en: "Crafted for love, built for eternity."
+    },
+    insured: { original: "美国与英国保价配送", zh: "全境保价配送", en: "Insured delivery" },
+    returns: {
+      original: "符合条件未佩戴商品支持 30 天退换",
+      zh: "未佩戴、符合条件商品，支持 30 天无忧退换",
+      en: "Eligible unworn pieces support 30-day worry-free returns."
+    },
+    email: { original: "support@everastone.com", zh: "客服邮箱：support@everastone.com", en: "Support: support@everastone.com" }
+  }
+};
 
 const pageFromPath = (pathname) => {
   if (pathname.startsWith("/admin")) return "admin";
@@ -181,6 +363,18 @@ const pageFromPath = (pathname) => {
   if (pathname.startsWith("/account")) return "account";
   if (Object.values(contentPaths).includes(pathname)) return "content";
   return "home";
+};
+
+const engagementMenuFilters = {
+  popularOval: { shape: "oval", caratMin: 2, caratMax: 2.5 },
+  popularRound: { shape: "round", caratMin: 1.5, caratMax: 2 },
+  popularPear: { shape: "pear", caratMin: 2.5, caratMax: 3 },
+  popularEmerald: { shape: "emerald", caratMin: 3, caratMax: 4 },
+  settingSolitaire: { sort: "popular" },
+  settingHalo: { sort: "popular" },
+  settingPave: { sort: "popular" },
+  settingThreeStone: { sort: "popular" },
+  settingVintage: { sort: "popular" }
 };
 
 function ShapeIcon({ shape, active }) {
@@ -207,6 +401,11 @@ function Header({ page, setPage, setFilters, openContent, cartCount, serviceCoun
       setPage("diamonds");
       return;
     }
+    if (engagementMenuFilters[contentKey]) {
+      setFilters((current) => ({ ...current, ...engagementMenuFilters[contentKey] }));
+      setPage("diamonds");
+      return;
+    }
     if (contentKey) {
       openContent(contentKey);
       return;
@@ -214,23 +413,23 @@ function Header({ page, setPage, setFilters, openContent, cartCount, serviceCoun
     setPage(target);
   };
   const nav = [
-    { key: "home", label: "首页", target: "home" },
+    { key: "home", label: "Home", target: "home" },
     {
       key: "engagement",
-      label: "订婚戒指",
+      label: "Engagement",
       target: "diamonds",
       mega: [
-        { title: "钻石形状", items: [["圆形", "round"], ["垫形", "cushion"], ["祖母绿形", "emerald"], ["水滴形", "pear"], ["公主方形", "princess"], ["椭圆形", "oval"], ["放射方形", "radiant"]] },
-        { title: "热门钻石", items: [["2 克拉椭圆主钻", null, "popularOval"], ["1.5 克拉圆形主钻", null, "popularRound"], ["2.5 克拉水滴主钻", null, "popularPear"], ["3 克拉祖母绿主钻", null, "popularEmerald"]] },
-        { title: "镶嵌类型", items: [["单钻款", null, "settingSolitaire"], ["围镶款", null, "settingHalo"], ["密镶款", null, "settingPave"], ["三石款", null, "settingThreeStone"], ["复古款", null, "settingVintage"]] }
+        { title: "Diamond Shapes", items: [["Oval", "oval"], ["Round", "round"], ["Marquise", "marquise"], ["Emerald", "emerald"], ["Princess", "princess"], ["Pear", "pear"], ["Radiant", "radiant"]] },
+        { title: "Popular Diamonds", items: [["2 ct Oval Center Stone", null, "popularOval"], ["1.5 ct Round Center Stone", null, "popularRound"], ["2.5 ct Pear Center Stone", null, "popularPear"], ["3 ct Emerald Center Stone", null, "popularEmerald"]] },
+        { title: "Setting Types", items: [["Solitaire", null, "settingSolitaire"], ["Halo", null, "settingHalo"], ["Pavé", null, "settingPave"], ["Three-Stone", null, "settingThreeStone"], ["Vintage", null, "settingVintage"]] }
       ]
     },
-    { key: "couple", label: "情侣对戒", contentKey: "couple", mega: [{ title: "热门对戒分类", items: [["素圈婚戒", null, "coupleClassic"], ["带钻对戒", null, "coupleDiamond"], ["极简窄款对戒", null, "coupleMinimal"], ["复古雕花对戒", null, "coupleVintage"]] }] },
-    { key: "fine", label: "日常珠宝", contentKey: "jewelry", mega: [{ title: "首饰分类", items: [["耳饰", null, "earrings"], ["项链", null, "necklaces"], ["手链", null, "bracelets"]] }] },
-    { key: "custom", label: "定制戒指", contentKey: "custom", mega: [{ title: "定制戒指", items: [["定制流程介绍", null, "customProcess"], ["主钻选择入口", null, "customDiamond"], ["戒托定制入口", null, "customSetting"]] }] },
-    { key: "story", label: "品牌故事", contentKey: "story" },
-    { key: "cart", label: "购物车", target: "cart", count: cartCount },
-    { key: "account", label: "我的", target: "account" }
+    { key: "couple", label: "Matching", contentKey: "couple", mega: [{ title: "Ring Categories", items: [["Classic Bands", null, "coupleClassic"], ["Diamond Pairs", null, "coupleDiamond"], ["Minimal Slim Rings", null, "coupleMinimal"], ["Vintage Engraved Rings", null, "coupleVintage"]] }] },
+    { key: "designer", label: "Designer", contentKey: "designer" },
+    { key: "custom", label: "Bespoke", contentKey: "custom" },
+    { key: "story", label: "Story", contentKey: "story" },
+    { key: "cart", label: "Cart", target: "cart", count: cartCount },
+    { key: "account", label: "Account", target: "account" }
   ];
   const primaryNav = nav.filter((item) => !["cart", "account"].includes(item.key));
   const utilityNav = nav.filter((item) => ["cart", "account"].includes(item.key));
@@ -255,21 +454,21 @@ function Header({ page, setPage, setFilters, openContent, cartCount, serviceCoun
     <>
       <div className="brand-ticker" aria-label="品牌服务与优惠提示">
         <div className="brand-ticker-track">
-          <span>已服务 {liveServiceCount.toLocaleString("zh-CN")} 人，越来越多新人选择 Eternastone 珠宝。</span>
-          <span>首单享受 10% 折扣，定制钻戒也可享受。</span>
-          <span>制作+配送周期约 23 天，可加急处理。</span>
-          <span>已服务 {liveServiceCount.toLocaleString("zh-CN")} 人，越来越多新人选择 Eternastone 珠宝。</span>
+          <span>{homeCopy.ticker[0].en(liveServiceCount)}</span>
+          <span>{homeCopy.ticker[1].en}</span>
+          <span>{homeCopy.ticker[2].en}</span>
+          <span>{homeCopy.ticker[0].en(liveServiceCount)}</span>
         </div>
       </div>
       <header className={scrolled ? "site-header scrolled" : "site-header"}>
         <button className="mobile-menu-trigger" onClick={() => setMobileMenuOpen(true)} aria-label="打开移动端菜单">
           <Menu size={22} />
         </button>
-        <button className="brand" onClick={() => setPage("home")} aria-label="Eternastone Jewelry home">
+        <button className="brand" onClick={() => setPage("home")} aria-label="everastone Jewelry home">
           <span className="brand-mark"><Diamond size={20} /></span>
           <span>
-            <strong>Eternastone 珠宝</strong>
-            <small>培育钻石高级定制</small>
+            <strong>everastone</strong>
+            <small>Lab-grown diamond atelier</small>
           </span>
         </button>
         <nav className="main-nav" aria-label="Main navigation">
@@ -314,15 +513,15 @@ function Header({ page, setPage, setFilters, openContent, cartCount, serviceCoun
           <aside className="mobile-drawer" role="dialog" aria-modal="true" aria-label="移动端导航菜单">
             <div className="mobile-drawer-brand">
               <span className="brand-mark"><Diamond size={18} /></span>
-              <span><strong>ETERNASTONE 珠宝</strong><small>培育钻石高级定制</small></span>
+          <span><strong>everastone</strong><small>Lab-grown diamond atelier</small></span>
               <button onClick={() => setMobileMenuOpen(false)} aria-label="关闭菜单"><X size={18} /></button>
             </div>
             <label className="mobile-search">
-              <input placeholder="搜索..." />
+              <input placeholder="Search..." />
               <Search size={18} />
             </label>
             <div className="mobile-drawer-links">
-              <button onClick={() => openTarget("home")}>首页</button>
+              <button onClick={() => openTarget("home")}>Home</button>
               {mobileGroups.map((item) => (
                 <div className={mobilePanel === item.key ? "mobile-menu-group open" : "mobile-menu-group"} key={item.key}>
                   <button onClick={() => setMobilePanel((current) => current === item.key ? "" : item.key)}>
@@ -344,9 +543,10 @@ function Header({ page, setPage, setFilters, openContent, cartCount, serviceCoun
                   </div>
                 </div>
               ))}
-              <button onClick={() => openTarget(null, null, "story")}>品牌故事</button>
-              <button onClick={() => openTarget("account")}><UserRound size={16} /> 登录 / 我的</button>
-              <button onClick={() => openTarget("cart")}><ShoppingBag size={16} /> 我的包{cartCount > 0 ? `（${cartCount}）` : ""}</button>
+              <button onClick={() => openTarget(null, null, "designer")}>Designer Editions</button>
+              <button onClick={() => openTarget(null, null, "story")}>Brand Story</button>
+              <button onClick={() => openTarget("account")}><UserRound size={16} /> Sign in / Account</button>
+              <button onClick={() => openTarget("cart")}><ShoppingBag size={16} /> Bag{cartCount > 0 ? ` (${cartCount})` : ""}</button>
             </div>
           </aside>
         </div>
@@ -359,11 +559,11 @@ function Home({ setPage, applyPreset }) {
   const [heroTilt, setHeroTilt] = useState({ x: 0, y: 0 });
   const [heroScroll, setHeroScroll] = useState(0);
   const presets = [
-    { title: "椭圆形培育钻石", text: "2.00-2.50 ct", shape: "oval", min: 2, max: 2.5 },
-    { title: "圆形培育钻石", text: "1.50-2.00 ct", shape: "round", min: 1.5, max: 2 },
-    { title: "水滴形培育钻石", text: "2.50-3.00 ct", shape: "pear", min: 2.5, max: 3 }
+    { title: "Oval Lab-Grown Diamond", text: "2.00-2.50 ct", shape: "oval", min: 2, max: 2.5, desc: "An elongated, graceful silhouette and one of today's most loved engagement ring choices." },
+    { title: "Round Lab-Grown Diamond", text: "1.50-2.00 ct", shape: "round", min: 1.5, max: 2, desc: "Full fire, timeless symmetry and a proposal classic that never feels dated." },
+    { title: "Pear Lab-Grown Diamond", text: "2.50-3.00 ct", shape: "pear", min: 2.5, max: 3, desc: "A soft teardrop shape with romantic presence, designed to flatter the hand." }
   ];
-  const homeShapeKeys = ["round", "cushion", "emerald", "pear", "princess", "oval", "radiant"];
+  const homeShapeKeys = ["oval", "round", "marquise", "emerald", "princess", "pear", "radiant"];
   const homeShapes = homeShapeKeys.map((key) => shapes.find((shape) => shape.key === key)).filter(Boolean);
   const handleHeroMove = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -410,38 +610,53 @@ function Home({ setPage, applyPreset }) {
           <span className="hero-product-shine" />
         </div>
         <div className="hero-copy">
-          <p className="eyebrow">高级培育钻石定制工作室</p>
-          <h1>Eternastone 珠宝</h1>
-          <h2 className="hero-subtitle">定制订婚戒指与高级培育钻石珠宝</h2>
-          <p>为美国与英国客户手工定制。甄选伦理培育钻石，坚持按需设计与精工制作。</p>
+          <p className="eyebrow">{homeCopy.hero.eyebrow.en}</p>
+          <h1>{homeCopy.hero.title.en}</h1>
+          <h2 className="hero-subtitle">{homeCopy.hero.subtitle.en}</h2>
+          <p>{homeCopy.hero.text.en}</p>
           <div className="hero-actions">
-            <button className="primary-btn" onClick={() => setPage("diamonds")}>选购订婚戒指</button>
-            <button className="secondary-btn hero-outline" onClick={() => setPage("diamonds")}>定制专属钻戒</button>
+            <button className="primary-btn" onClick={() => setPage("diamonds")}>{homeCopy.hero.primaryCta.en}</button>
+            <button className="secondary-btn hero-outline" onClick={() => setPage("diamonds")}>{homeCopy.hero.secondaryCta.en}</button>
           </div>
         </div>
       </section>
 
+      <section className="home-service-strip" aria-label="Service promises">
+        {[
+          [BadgeCheck, "IGI认证钻石"],
+          [RotateCcw, "30 天轻松退换"],
+          [Plane, "美国境内免运费"],
+          [ShieldCheck, "一年保修"],
+          [Ruler, "免费戒指尺寸调整"]
+        ].map(([Icon, label]) => (
+          <div className="home-service-item" key={label}>
+            <Icon size={18} strokeWidth={1.8} />
+            <span>{label}</span>
+          </div>
+        ))}
+      </section>
+
       <section className="section shape-showcase">
         <div className="section-heading">
-          <h2>找到最适合你的主钻轮廓</h2>
-          <p>挑选你的主钻形状，开启培育钻戒定制第一步</p>
+          <h2>{homeCopy.shapes.title.en}</h2>
+          <p>{homeCopy.shapes.intro.en}</p>
         </div>
         <div className="shape-card-grid">
           {homeShapes.map((shape) => (
             <button className="shape-photo-card" key={shape.key} onClick={() => applyPreset({ shape: shape.key, min: 1, max: 7 })}>
               <img src={shape.image} alt={`${shape.zh}培育钻石`} loading="lazy" />
-              <strong>{shape.zh}</strong>
-              <span>查看{shape.zh}戒指</span>
+              <strong>{shape.label}</strong>
+              <span>{homeCopy.shapes.itemPrefix.en} {shape.label} {homeCopy.shapes.itemSuffix.en}</span>
             </button>
           ))}
         </div>
         <div className="collection-divider">
           <span>OUR COLLECTION</span>
-          <strong>四大核心珠宝系列</strong>
+          <strong>Four Signature Collections</strong>
         </div>
         <div className="category-grid">
           {categories.map((category, index) => (
-            <button className="category-card" key={category.key} onClick={() => setPage("diamonds")}>
+            <button className="category-card" key={category.key} onClick={() => category.contentKey ? setPage("content", { contentKey: category.contentKey }) : setPage(category.target ?? "diamonds")}>
               <span>{String(index + 1).padStart(2, "0")}</span>
               <h3>{category.title}</h3>
               <p>{category.subtitle}</p>
@@ -452,8 +667,9 @@ function Home({ setPage, applyPreset }) {
 
       <section className="section muted-band">
         <div className="section-heading">
-          <p className="eyebrow">Best-Selling Searches</p>
-          <h2>欧美客户热门钻石规格</h2>
+          <p className="eyebrow">{homeCopy.popular.eyebrow.en}</p>
+          <h2>{homeCopy.popular.title.en}</h2>
+          <p>{homeCopy.popular.intro.en}</p>
         </div>
         <div className="preset-grid">
           {presets.map((preset) => {
@@ -463,7 +679,7 @@ function Home({ setPage, applyPreset }) {
                 <ShapeIcon shape={shape} active />
                 <span>{preset.text}</span>
                 <h3>{preset.title}</h3>
-                <p>一键进入对应培育钻石筛选条件，快速挑选主石与戒托。</p>
+                <p>{preset.desc}</p>
               </button>
             );
           })}
@@ -472,15 +688,11 @@ function Home({ setPage, applyPreset }) {
 
       <section className="section process-section">
         <div className="section-heading">
-          <p className="eyebrow">Custom Process</p>
-          <h2>三步完成专属定制</h2>
+          <p className="eyebrow">{homeCopy.process.eyebrow.en}</p>
+          <h2>{homeCopy.process.title.en}</h2>
         </div>
         <div className="process-grid">
-          {[
-            ["01", "选择培育钻石", "按形状、克拉、颜色、净度与证书筛选理想主石。"],
-            ["02", "设计戒托方案", "选择金属材质、戒指尺码与适合日常佩戴的比例。"],
-            ["03", "制作并配送", "工坊按订单制作，完成质检后为英美客户保价配送。"]
-          ].map(([step, title, text]) => (
+          {homeCopy.process.steps.map(({ en: [step, title, text] }) => (
             <article className="process-card" key={step}>
               <span>{step}</span>
               <h3>{title}</h3>
@@ -492,22 +704,22 @@ function Home({ setPage, applyPreset }) {
 
       <section className="split-section">
         <div>
-          <p className="eyebrow">Why Lab Grown</p>
-          <h2>同样闪耀，更适合现代高级珠宝定制</h2>
-          <p>培育钻石拥有与天然钻石相同的碳晶体结构与火彩表现，同时让客户在预算、尺寸、净度与伦理选择上拥有更高自由度。</p>
+          <p className="eyebrow">{homeCopy.labGrown.eyebrow.en}</p>
+          <h2>{homeCopy.labGrown.title.en}</h2>
+          <p>{homeCopy.labGrown.text.en}</p>
         </div>
         <div className="education-panel">
           <Sparkles />
-          <h3>甄选实验室培育钻石</h3>
-          <p>每颗主石均可录入形状、克拉、颜色、净度、切工、抛光、对称、证书与荧光等专业参数。</p>
+          <h3>{homeCopy.labGrown.panelTitle.en}</h3>
+          <p>{homeCopy.labGrown.panelText.en}</p>
         </div>
       </section>
 
       <section className="reviews">
         {[
-          ["Ava, New York", "椭圆钻戒实物比图片更通透，定制沟通非常清晰，整个过程让人安心。"],
-          ["Mia, London", "价格透明，铂金戒托质感很细腻，交付节奏也符合我们的婚期安排。"],
-          ["James, Austin", "1.8 克拉圆钻的存在感非常好，没有超出我们的预算。"]
+          ["Ava, New York", "The oval ring looked even brighter in person. The design process felt clear, calm and deeply personal."],
+          ["Mia, London", "The pricing was transparent, the platinum setting felt beautifully refined, and the timing worked perfectly for our date."],
+          ["James, Austin", "The 1.8 ct round diamond had exactly the presence we wanted without pushing beyond our budget."]
         ].map(([name, text]) => (
           <article className="review-card" key={name}>
             <div><Star /><Star /><Star /><Star /><Star /></div>
@@ -520,7 +732,7 @@ function Home({ setPage, applyPreset }) {
   );
 }
 
-function FilterPage({ filters, setFilters, diamonds, openProduct }) {
+function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const filtered = useMemo(() => {
@@ -578,7 +790,11 @@ function FilterPage({ filters, setFilters, diamonds, openProduct }) {
       </section>
 
       <section className="shape-bar" aria-label="Diamond shape filter">
-        {shapes.map((shape) => (
+        <button className={!filters.shape ? "active" : ""} onClick={() => setValue("shape", "")}>
+          <span className="shape-all-icon">ALL</span>
+          <span>所有款式</span>
+        </button>
+        {catalogShapes.map((shape) => (
           <button key={shape.key} className={filters.shape === shape.key ? "active" : ""} onClick={() => setValue("shape", filters.shape === shape.key ? "" : shape.key)}>
             <ShapeIcon shape={shape} active={filters.shape === shape.key} />
             <span>{shape.zh}</span>
@@ -642,15 +858,8 @@ function FilterPage({ filters, setFilters, diamonds, openProduct }) {
           </div>
           <div className="product-grid">
             {filtered.map((diamond) => (
-              <ProductCard product={diamond} openProduct={openProduct} key={diamond.id} />
+              <ProductCard product={diamond} openProduct={openProduct} addToCart={addToCart} key={diamond.id} />
             ))}
-          </div>
-          <div className="pagination" aria-label="Pagination">
-            <button>上一页</button>
-            <button className="active">1</button>
-            <button>2</button>
-            <button>3</button>
-            <button>下一页</button>
           </div>
         </section>
       </section>
@@ -658,25 +867,53 @@ function FilterPage({ filters, setFilters, diamonds, openProduct }) {
   );
 }
 
-function ProductCard({ product, openProduct }) {
+function ProductCard({ product, openProduct, addToCart }) {
   const [materialGroup, setMaterialGroup] = useState(getMaterialImageGroup(product.material));
   useEffect(() => {
     setMaterialGroup(getMaterialImageGroup(product.material));
   }, [product.id, product.material]);
-  const selectedGroup = materialImageGroups.find((group) => group.key === materialGroup) ?? materialImageGroups[0];
+  const availableGroups = getAvailableMaterialGroups(product);
+  useEffect(() => {
+    if (!availableGroups.some((group) => group.key === materialGroup)) {
+      setMaterialGroup(availableGroups[0]?.key ?? "whiteGold");
+    }
+  }, [availableGroups, materialGroup]);
+  const selectedGroup = availableGroups.find((group) => group.key === materialGroup) ?? availableGroups[0] ?? materialImageGroups[0];
   const cardImage = getProductMedia(product, selectedGroup.label).images?.[0] || getPrimaryProductImage(product);
+  const firstVariant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
+  const quickMetal = `${selectedGroup.label}${firstVariant.purity && firstVariant.purity !== selectedGroup.label ? ` · ${firstVariant.purity}` : ""}`;
+  const openCard = () => openProduct(product.id);
+  const quickAdd = (event) => {
+    event.stopPropagation();
+    addToCart?.({ ...product, price: firstVariant.price ?? product.price, image: cardImage }, quickMetal, "US 6");
+  };
 
   return (
-    <button className="product-card" key={product.id} onClick={() => openProduct(product.id)}>
+    <article
+      className="product-card"
+      key={product.id}
+      role="button"
+      tabIndex={0}
+      onClick={openCard}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openCard();
+        }
+      }}
+    >
       <img src={cardImage} alt={product.name ?? `${shapeLabel(product.shape)} 培育钻石商品`} loading="lazy" />
       <div>
         <span>{product.id}</span>
         <h3>{product.name ?? `${Number(product.carat).toFixed(2)} ct ${shapeLabel(product.shape)}`}</h3>
         <p>{Number(product.carat).toFixed(2)} ct · {product.color} 色级 · {product.clarity} 净度 · {product.certificate}</p>
-        <strong>{money(product.price)}</strong>
+        <div className="card-price-row">
+          <strong>{money(product.price)}</strong>
+          <button className="card-add-btn" type="button" onClick={quickAdd}>加购</button>
+        </div>
       </div>
       <div className="card-material-swatches" aria-label="戒托材质预览">
-        {materialImageGroups.map((group) => (
+        {availableGroups.map((group) => (
           <span
             role="button"
             tabIndex={0}
@@ -698,7 +935,7 @@ function ProductCard({ product, openProduct }) {
           </span>
         ))}
       </div>
-    </button>
+    </article>
   );
 }
 
@@ -727,6 +964,7 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
   const [thumbStart, setThumbStart] = useState(0);
   const [specsOpen, setSpecsOpen] = useState(true);
   const [descriptionOpen, setDescriptionOpen] = useState(true);
+  const [favoriteNotice, setFavoriteNotice] = useState("");
   const purchaseActionsRef = useRef(null);
   useEffect(() => {
     setVariantIndex(0);
@@ -848,6 +1086,21 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
       setMobileImageOpen(true);
     }
   };
+  const saveFavorite = async () => {
+    try {
+      const session = JSON.parse(window.localStorage.getItem(CUSTOMER_SESSION_STORAGE_KEY) || "null");
+      const accessToken = session?.access_token;
+      const userId = session?.user?.id;
+      if (!accessToken || !userId) {
+        setFavoriteNotice("请先到“我的”页面登录后再收藏商品。");
+        return;
+      }
+      await addMyFavorite(accessToken, userId, product.id);
+      setFavoriteNotice("已加入收藏，可在“我的 - 收藏商品”查看。");
+    } catch (error) {
+      setFavoriteNotice(error.message || "收藏失败，请稍后重试。");
+    }
+  };
 
   return (
     <main className="detail-page">
@@ -951,6 +1204,8 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
             <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`)}>加入购物车</button>
             <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`); setPage("checkout"); }}>立即购买</button>
           </div>
+          <button className="favorite-btn" onClick={saveFavorite}><Heart size={16} /> 收藏商品</button>
+          {favoriteNotice ? <p className="checkout-notice">{favoriteNotice}</p> : null}
           <div className="delivery-note">
             <Truck size={16} />
             <span>标准制作约 15 天，因款式有 ±2 天波动；</span>
@@ -1040,6 +1295,7 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
 
 function Cart({ cart, setCart, setPage }) {
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const discount = subtotal * 0.1;
   const tax = subtotal * 0.075;
   const shipping = subtotal > 0 ? 95 : 0;
 
@@ -1068,9 +1324,10 @@ function Cart({ cart, setCart, setPage }) {
         <aside className="summary-panel">
           <h2>订单汇总</h2>
           <p><span>商品小计</span><strong>{money(subtotal)}</strong></p>
+          <p><span>首单优惠 10%</span><strong>-{money(discount)}</strong></p>
           <p><span>预估税费</span><strong>{money(tax)}</strong></p>
           <p><span>保价运费</span><strong>{money(shipping)}</strong></p>
-          <p className="summary-total"><span>合计</span><strong>{money(subtotal + tax + shipping)}</strong></p>
+          <p className="summary-total"><span>合计</span><strong>{money(subtotal - discount + tax + shipping)}</strong></p>
           <button className="primary-btn full" disabled={!cart.length} onClick={() => setPage("checkout")}>去结算</button>
         </aside>
       </div>
@@ -1080,11 +1337,179 @@ function Cart({ cart, setCart, setPage }) {
 
 function Checkout({ cart, onSubmitOrder }) {
   const [notice, setNotice] = useState("");
-  const submitOrder = () => {
-    if (!cart.length) return;
-    onSubmitOrder(cart.reduce((sum, item) => sum + item.qty, 0));
-    setNotice("订单已提交，首单优惠已应用，服务人数已同步累加。");
+  const [submitting, setSubmitting] = useState(false);
+  const [paypalReady, setPaypalReady] = useState(false);
+  const paypalButtonsRef = useRef(null);
+  const localOrderRef = useRef(null);
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    country: "美国",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    phone: ""
+  });
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const discount = Math.round(subtotal * 0.1 * 100) / 100;
+  const tax = Math.round(subtotal * 0.075 * 100) / 100;
+  const shipping = subtotal > 0 ? 95 : 0;
+  const total = Math.max(0, subtotal - discount + tax + shipping);
+  useEffect(() => {
+    if (cart.length) {
+      trackAnalyticsEvent({
+        eventType: "checkout_start",
+        pagePath: window.location.pathname,
+        sessionId: getAnalyticsSessionId(),
+        metadata: { total, itemCount: cart.reduce((sum, item) => sum + item.qty, 0) }
+      }).catch(() => {});
+    }
+  }, []);
+  const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const validateCheckout = () => {
+    if (!cart.length) return "购物车为空，请先添加商品。";
+    if (!form.email || !form.email.includes("@") || !form.addressLine1 || !form.city || !form.postalCode) {
+      return "请先填写邮箱、街道地址、城市和邮编。";
+    }
+    return "";
   };
+  const buildCheckoutPayload = () => ({
+    email: form.email,
+    address: {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      country: form.country,
+      addressLine1: form.addressLine1,
+      addressLine2: form.addressLine2,
+      city: form.city,
+      state: form.state,
+      postalCode: form.postalCode,
+      phone: form.phone
+    },
+    items: cart.map((item) => ({
+      productId: item.id,
+      title: item.title,
+      image: item.image,
+      material: item.metal,
+      size: item.size,
+      quantity: item.qty,
+      unitPrice: item.price,
+      lineTotal: item.price * item.qty,
+      specs: {
+        material: item.metal,
+        size: item.size
+      }
+    })),
+    subtotal,
+    discount,
+    tax,
+    shipping,
+    total
+  });
+  const submitOrder = async () => {
+    const validation = validateCheckout();
+    if (validation) {
+      setNotice(validation);
+      return;
+    }
+    setSubmitting(true);
+    setNotice("正在保存待付款订单...");
+    try {
+      const order = await createStorefrontOrder(buildCheckoutPayload());
+      onSubmitOrder(cart.reduce((sum, item) => sum + item.qty, 0));
+      setNotice(`订单已保存到数据库，订单号：${order.orderNumber || order.id}。当前支付状态：待付款。`);
+    } catch (error) {
+      setNotice(error.message || "订单提交失败，请稍后重试。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+    if (!clientId || !paypalButtonsRef.current) return undefined;
+    let cancelled = false;
+    const scriptId = "paypal-js-sdk";
+    const loadPayPal = () => new Promise((resolve, reject) => {
+      if (window.paypal) return resolve(window.paypal);
+      const existing = document.getElementById(scriptId);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(window.paypal), { once: true });
+        existing.addEventListener("error", reject, { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = scriptId;
+      script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=USD&intent=capture`;
+      script.onload = () => resolve(window.paypal);
+      script.onerror = reject;
+      document.body.appendChild(script);
+    });
+    paypalButtonsRef.current.innerHTML = "";
+    loadPayPal()
+      .then((paypal) => {
+        if (cancelled || !paypalButtonsRef.current) return;
+        setPaypalReady(true);
+        paypal.Buttons({
+          style: { layout: "vertical", color: "gold", shape: "rect", label: "paypal" },
+          onClick: () => {
+            const validation = validateCheckout();
+            if (validation) {
+              setNotice(validation);
+              return false;
+            }
+            setNotice("");
+            return true;
+          },
+          createOrder: async () => {
+            setSubmitting(true);
+            setNotice("正在创建 PayPal 支付订单...");
+            trackAnalyticsEvent({
+              eventType: "paypal_start",
+              pagePath: window.location.pathname,
+              sessionId: getAnalyticsSessionId(),
+              metadata: { total }
+            }).catch(() => {});
+            const result = await createPayPalOrder(buildCheckoutPayload());
+            localOrderRef.current = result.order;
+            return result.paypalOrderId;
+          },
+          onApprove: async (data) => {
+            setNotice("PayPal 已授权，正在确认付款...");
+            const result = await capturePayPalOrder(data.orderID, localOrderRef.current?.id || localOrderRef.current?.orderNumber);
+            trackAnalyticsEvent({
+              eventType: "paypal_paid",
+              pagePath: window.location.pathname,
+              sessionId: getAnalyticsSessionId(),
+              metadata: { orderId: result.order?.orderNumber || result.order?.id, total }
+            }).catch(() => {});
+            onSubmitOrder(cart.reduce((sum, item) => sum + item.qty, 0));
+            setNotice(`付款成功，订单号：${result.order?.orderNumber || result.order?.id}，订单状态已更新为“已付款”。`);
+            setSubmitting(false);
+          },
+          onCancel: () => {
+            setSubmitting(false);
+            setNotice("你已取消 PayPal 支付，订单仍为待付款。");
+          },
+          onError: (error) => {
+            setSubmitting(false);
+            setNotice(error?.message || "PayPal 支付失败，请稍后重试。");
+          }
+        }).render(paypalButtonsRef.current);
+      })
+      .catch((error) => {
+        setPaypalReady(false);
+        setNotice(error?.message || "PayPal 按钮加载失败，请检查 VITE_PAYPAL_CLIENT_ID。");
+      });
+    return () => {
+      cancelled = true;
+      if (paypalButtonsRef.current) paypalButtonsRef.current.innerHTML = "";
+    };
+  }, [cart, form, subtotal, discount, tax, shipping, total]);
+
   return (
     <main className="utility-page">
       <h1>安全结算</h1>
@@ -1092,26 +1517,38 @@ function Checkout({ cart, onSubmitOrder }) {
         <section>
           <h2>收货地址</h2>
           <div className="form-grid">
-            <input placeholder="名" />
-            <input placeholder="姓" />
-            <input placeholder="邮箱" type="email" />
-            <select><option>美国</option><option>英国</option></select>
-            <input placeholder="街道地址" className="wide" />
-            <input placeholder="公寓、套房、门牌号" className="wide" />
-            <input placeholder="城市" />
-            <input placeholder="州 / 郡" />
-            <input placeholder="邮编" />
-            <input placeholder="电话" />
+            <input placeholder="名" value={form.firstName} onChange={(event) => updateForm("firstName", event.target.value)} />
+            <input placeholder="姓" value={form.lastName} onChange={(event) => updateForm("lastName", event.target.value)} />
+            <input placeholder="邮箱" type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} />
+            <select value={form.country} onChange={(event) => updateForm("country", event.target.value)}><option>美国</option><option>英国</option></select>
+            <input placeholder="街道地址" className="wide" value={form.addressLine1} onChange={(event) => updateForm("addressLine1", event.target.value)} />
+            <input placeholder="公寓、套房、门牌号" className="wide" value={form.addressLine2} onChange={(event) => updateForm("addressLine2", event.target.value)} />
+            <input placeholder="城市" value={form.city} onChange={(event) => updateForm("city", event.target.value)} />
+            <input placeholder="州 / 郡" value={form.state} onChange={(event) => updateForm("state", event.target.value)} />
+            <input placeholder="邮编" value={form.postalCode} onChange={(event) => updateForm("postalCode", event.target.value)} />
+            <input placeholder="电话" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} />
           </div>
         </section>
         <section>
-          <h2>支付接口预留</h2>
+          <h2>PayPal 安全支付</h2>
           <div className="payment-placeholder">
             <CreditCard />
-            <p>此处预留 Stripe、PayPal 或本地收单支付接口对接区域。</p>
+            <p>点击 PayPal 后会先保存订单，再进入 PayPal 支付；支付成功后订单会自动更新为“已付款”。</p>
+          </div>
+          <div className="summary-panel checkout-summary">
+            <p><span>商品小计</span><strong>{money(subtotal)}</strong></p>
+            <p><span>首单优惠 10%</span><strong>-{money(discount)}</strong></p>
+            <p><span>预估税费</span><strong>{money(tax)}</strong></p>
+            <p><span>保价运费</span><strong>{money(shipping)}</strong></p>
+            <p className="summary-total"><span>合计</span><strong>{money(total)}</strong></p>
           </div>
           <label className="check-row"><input type="checkbox" /> 我同意订单加密处理与隐私条款。</label>
-          <button className="primary-btn full" type="button" disabled={!cart.length} onClick={submitOrder}>提交订单</button>
+          {import.meta.env.VITE_PAYPAL_CLIENT_ID ? (
+            <div className={paypalReady ? "paypal-button-box ready" : "paypal-button-box"} ref={paypalButtonsRef} />
+          ) : (
+            <p className="checkout-notice">请先在 Vercel 前端环境变量填写 VITE_PAYPAL_CLIENT_ID，PayPal 按钮才会显示。</p>
+          )}
+          <button className="ghost-btn full" type="button" disabled={!cart.length || submitting} onClick={submitOrder}>{submitting ? "保存中..." : "仅保存待付款订单"}</button>
           {notice ? <p className="checkout-notice">{notice}</p> : null}
         </section>
       </form>
@@ -1130,15 +1567,17 @@ const contentPages = {
   coupleDiamond: { eyebrow: "DIAMOND PAIRS", title: "带钻对戒", intro: "用小颗培育钻石增加光泽，日常佩戴不夸张。", cards: [["单颗点钻", "一颗小钻作为两人印记。"], ["半圈排钻", "光泽更明显，仍保持克制。"], ["隐藏钻设计", "内侧或侧边隐藏钻，低调浪漫。"]] },
   coupleMinimal: { eyebrow: "MINIMAL SLIM", title: "极简窄款对戒", intro: "更轻盈的戒宽和干净比例，适合年轻、现代的佩戴审美。", cards: [["细窄素圈", "佩戴存在感轻，适合叠戴。"], ["细窄点钻", "微光点缀，简洁耐看。"], ["情侣刻字", "支持英文缩写、日期与短句。"]] },
   coupleVintage: { eyebrow: "VINTAGE ENGRAVED", title: "复古雕花对戒", intro: "通过雕刻纹理、边缘珠边与复古比例表达更强的故事感。", cards: [["麦穗纹", "象征陪伴与丰盛。"], ["珠边雕刻", "经典复古细节。"], ["旧金质感", "柔和金属光泽，不刺眼。"]] },
-  jewelry: { eyebrow: "DAILY JEWELRY", title: "日常珠宝", intro: "适合通勤、约会与纪念日佩戴的轻奢培育钻石首饰。", cards: [["耳饰", "圆钻耳钉、垂坠耳饰与日常小钻耳饰。"], ["项链", "锁骨链、单钻吊坠与纪念日项链。"], ["手链", "细链钻石手链与轻奢手饰。"]] },
-  earrings: { eyebrow: "EARRINGS", title: "钻石耳饰", intro: "从基础圆钻耳钉到轻盈垂坠款，突出脸部光泽。", cards: [["圆钻耳钉", "日常百搭，适合通勤佩戴。"], ["水滴耳饰", "修饰脸型，更有仪式感。"], ["排钻耳饰", "闪耀但保持轻盈。"]] },
-  necklaces: { eyebrow: "NECKLACES", title: "钻石项链", intro: "以锁骨线为中心设计，简洁但有记忆点。", cards: [["单钻吊坠", "经典安全的礼物选择。"], ["椭圆钻项链", "更显修长温柔。"], ["定制字母链", "结合纪念日与姓名缩写。"]] },
-  bracelets: { eyebrow: "BRACELETS", title: "钻石手链", intro: "轻盈链条与培育钻石火彩结合，适合日常叠戴。", cards: [["细链单钻", "低调精致。"], ["小钻排链", "微闪效果更明显。"], ["纪念日手链", "可定制刻字与钻石大小。"]] },
+  designer: { eyebrow: "DESIGNER EDITION", title: "设计师款式", intro: "以黑金视觉呈现本期原创设计，精选 3–5 款更有辨识度的培育钻石戒指，可查看详情或直接购买。", cards: [] },
   custom: { eyebrow: "BESPOKE RINGS", title: "定制戒指", intro: "从主钻选择、戒托设计到制作交付，打造只属于你的培育钻石戒指。", cards: [["定制流程介绍", "了解从沟通到交付的完整步骤。"], ["主钻选择入口", "按形状、克拉、颜色、净度筛选培育钻石。"], ["戒托定制入口", "选择材质、镶嵌方式、戒圈尺寸与细节。"]] },
-  customProcess: { eyebrow: "CUSTOM PROCESS", title: "定制流程介绍", intro: "三步完成专属定制：选主钻、设计戒托、制作并保价配送。", cards: [["01 选择主钻", "确认形状、克拉、颜色、净度与证书。"], ["02 设计戒托", "选择金属材质、镶嵌方式与佩戴比例。"], ["03 制作交付", "按订单制作，质检后配送至美国或英国。"]] },
+  customProcess: { eyebrow: "CUSTOM PROCESS", title: "定制流程介绍", intro: "三步完成专属定制：选主钻、设计戒托、制作并保价配送。", cards: [["01 选择主钻", "确认形状、克拉、颜色、净度与证书。"], ["02 设计戒托", "选择金属材质、镶嵌方式与佩戴比例。"], ["03 制作交付", "按订单制作，多重质检后提供保价配送服务。"]] },
   customDiamond: { eyebrow: "CHOOSE DIAMOND", title: "主钻选择入口", intro: "进入培育钻石筛选页，按 10 种形状与完整钻石参数挑选主石。", cards: [["圆形 / 椭圆 / 水滴", "热门订婚钻戒主钻形状。"], ["颜色与净度", "支持 D-M、FL-I1 等级筛选。"], ["证书与比例", "切工、抛光、对称、荧光等同后台维护。"]], cta: "进入钻石筛选" },
   customSetting: { eyebrow: "CHOOSE SETTING", title: "戒托定制入口", intro: "确认材质、镶嵌类型、戒圈尺寸与佩戴细节。", cards: [["材质选择", "14K/18K 白金、黄金、玫瑰金、铂金。"], ["镶嵌类型", "单钻、围镶、密镶、三石、复古。"], ["尺码标准", "支持美码与英码。"]] },
-  story: { eyebrow: "BRAND STORY", title: "品牌故事", intro: "Eternastone 珠宝是一家专注实验室培育钻石的原创设计师工作室，坚持按需定制与长期佩戴价值。", cards: [["只做培育钻石", "全站无天然钻石切换、无混合来源库存。"], ["设计师工作室", "重视比例、佩戴舒适度与纪念意义。"], ["面向英美客户", "适配美国与英国尺码、地址与配送习惯。"]] },
+  story: {
+    eyebrow: "BRAND STORY",
+    title: "Crafted for Love, Built for Eternity",
+    intro: "Everastone believes a diamond’s true value is found in the sincerity, promise and emotional meaning behind every love story.",
+    cards: []
+  },
   popularOval: { eyebrow: "POPULAR DIAMOND", title: "2 克拉椭圆主钻", intro: "椭圆形在视觉上更显修长，是海外订婚戒指的热门选择。", cards: [["推荐克拉", "2.00–2.50ct"], ["推荐搭配", "单钻或隐藏光环戒托"], ["视觉特点", "显大、修长、温柔。"]] },
   popularRound: { eyebrow: "POPULAR DIAMOND", title: "1.5 克拉圆形主钻", intro: "圆形明亮式切割经典耐看，火彩表现稳定。", cards: [["推荐克拉", "1.50–2.00ct"], ["推荐搭配", "六爪单钻或密镶戒臂"], ["视觉特点", "经典、闪耀、保守安全。"]] },
   popularPear: { eyebrow: "POPULAR DIAMOND", title: "2.5 克拉水滴主钻", intro: "水滴形有明显方向感，适合追求独特轮廓的求婚戒指。", cards: [["推荐克拉", "2.50–3.00ct"], ["推荐搭配", "围镶或细戒臂"], ["视觉特点", "优雅、显长、辨识度强。"]] },
@@ -1147,7 +1586,75 @@ const contentPages = {
   settingHalo: { eyebrow: "SETTING TYPE", title: "围镶款", intro: "主钻外圈增加细钻，视觉更显大、更华丽。", cards: [["圆形围镶", "甜美经典。"], ["椭圆围镶", "显大且修长。"], ["复古围镶", "更有故事感。"]] },
   settingPave: { eyebrow: "SETTING TYPE", title: "密镶款", intro: "戒臂铺设小钻，增加整体闪耀度。", cards: [["半圈密镶", "兼顾舒适和闪耀。"], ["细戒臂密镶", "更轻盈。"], ["双排密镶", "更华丽。"]] },
   settingThreeStone: { eyebrow: "SETTING TYPE", title: "三石款", intro: "三颗主石象征过去、现在与未来，纪念意义更强。", cards: [["祖母绿三石", "稳重高级。"], ["椭圆三石", "柔和显大。"], ["水滴侧石", "线条更优雅。"]] },
-  settingVintage: { eyebrow: "SETTING TYPE", title: "复古款", intro: "通过雕花、珠边、老欧洲比例表达更强的仪式感。", cards: [["珠边细节", "复古精致。"], ["雕花戒臂", "更有手工感。"], ["旧金属光泽", "温润不浮夸。"]] }
+  settingVintage: { eyebrow: "SETTING TYPE", title: "复古款", intro: "通过雕花、珠边、老欧洲比例表达更强的仪式感。", cards: [["珠边细节", "复古精致。"], ["雕花戒臂", "更有手工感。"], ["旧金属光泽", "温润不浮夸。"]] },
+  shipping: {
+    eyebrow: "SHIPPING POLICY",
+    title: "配送政策",
+    intro: "everastone 按订单制作并质检后发货。标准制作约 15 天，因款式有 ±2 天波动；全球空运配送约 3–6 天，可联系客服咨询加急。",
+    cards: [
+      ["制作周期", "标准制作周期约 15 天，不同戒托、刻字、特殊定制和质检情况可能提前或延后约 2 天。"],
+      ["配送方式", "订单默认使用可追踪空运配送，并按订单价值安排保价；特殊地区可联系客服确认。"],
+      ["预计送达", `系统按当前日期自动估算约 ${formatArrivalDate(23)} 前后送达，实际时间以制作进度、物流清关和当地派送为准。`],
+      ["物流通知", "订单发货后会更新物流单号，并可通过账户订单或邮箱通知查看配送进度。"],
+      ["加急服务", "如求婚日期临近，请下单前联系定制师确认是否可加急制作与配送。"]
+    ],
+    cta: "返回选购订婚戒指"
+  },
+  returns: {
+    eyebrow: "RETURN POLICY",
+    title: "退换货政策",
+    intro: "我们希望每一枚戒指都能安心佩戴。符合条件的未佩戴现货商品支持 30 天退换；定制、刻字、改圈和特殊规格商品需按实际情况审核。",
+    cards: [
+      ["可退换范围", "未佩戴、未损坏、包装和证书齐全的标准商品，可在签收后 30 天内联系客服申请。"],
+      ["不适用范围", "已刻字、特殊定制、明显佩戴痕迹、损坏、证书或包装缺失的商品，通常不支持无理由退换。"],
+      ["退款流程", "通过订单号和邮箱提交申请，客服确认后安排寄回质检；质检通过后按原支付方式退款。"],
+      ["退款周期", "退款发起后，到账时间取决于 PayPal 与发卡行处理周期。"],
+      ["售后支持", "如戒指尺寸不合适、物流异常或商品到达后存在问题，请优先联系客服处理。"]
+    ],
+    cta: "返回选购订婚戒指"
+  },
+  warranty: {
+    eyebrow: "WARRANTY POLICY",
+    title: "保修政策",
+    intro: "在 everastone，我们承诺以精心设计、量身定制的精美珠宝伴您一生，直至永恒。我们对产品质量充满信心，并在发生意外时与您携手解决。",
+    cards: [
+      ["一年质量保修", "所有订单均享有一年保修期，涵盖制造缺陷，包括松动的爪子、装饰石脱落及电镀变色。"],
+      ["副石遗失", "保修期内如副石遗失，我们将免费寄送一颗符合原规格的替换石。您可选择在当地珠宝商处镶嵌并凭收据报销，最高 100 美元；也可将戒指寄回售后服务中心处理。"],
+      ["首次尺寸调整", "一年保修期内首次尺寸调整免费，支持美码 ±0.5 个尺码。超过此范围通常需要重新制作，不属于免费调整范围。"],
+      ["尺寸调整费用", "调整后的目标尺寸高于美国 11 号时，需额外支付 150 美元。保修期过后或首次调整之外的再次调整，将按实际服务报价。"],
+      ["如何办理", "可将戒指寄送至售后服务地址，或在当地珠宝商处调整后提交收据报销，尺寸调整报销上限为 50 美元。无论选择哪种方式，原保修权益仍然有效。申请修改尺寸或退款时，请同时提供订单信息、收据及调整后的戒指照片。"],
+      ["免责声明与联系", "本保修条款不涵盖主石的丢失或损坏；人为或外部因素造成的损坏不属于制造缺陷。需要帮助时请联系 support@everastone.com（正式上线前请替换为实际客服邮箱）。"]
+    ],
+    cta: "返回选购订婚戒指"
+  },
+  terms: {
+    eyebrow: "TERMS OF SERVICE",
+    title: "服务条款",
+    intro: "访问和购买 everastone 商品，即表示你理解并接受商品展示、定制沟通、在线支付、订单制作、物流配送和售后服务的相关规则。",
+    cards: [
+      ["商品信息", "商品图片、克拉、材质、规格和价格以页面展示及后台最终确认为准；天然拍摄光线可能造成轻微色差。"],
+      ["订单确认", "提交订单并完成支付后，我们会按所选规格进入备货或制作流程；如库存或定制条件异常，会主动联系确认。"],
+      ["价格与优惠", "首单 10% 优惠以结算页显示为准，不同活动不可保证叠加使用。"],
+      ["支付安全", "在线支付由 PayPal 等第三方支付服务完成，我们不在前端保存完整银行卡信息。"],
+      ["定制服务", "定制戒指需通过定制师确认需求、预算、设计和生产周期；最终交付以确认后的设计方案为准。"],
+      ["责任限制", "因不可控物流、清关、支付机构或网络服务异常造成的延迟，我们会协助处理但无法完全控制第三方时效。"]
+    ],
+    cta: "返回选购订婚戒指"
+  },
+  privacy: {
+    eyebrow: "PRIVACY POLICY",
+    title: "隐私条款",
+    intro: "everastone 重视客户隐私。我们仅为商品咨询、订单处理、支付核验、物流配送、售后服务与安全风控收集必要信息。",
+    cards: [
+      ["我们收集的信息", "包括姓名、联系方式、收货地址、订单商品、定制需求、支付状态、客服沟通记录以及你主动上传的参考图片。"],
+      ["信息使用方式", "用于确认订单、安排定制、提供物流、处理退换售后、改进网站体验，并在必要时完成安全验证。"],
+      ["支付与第三方服务", "在线支付由第三方支付服务处理，我们不在网站前端保存完整银行卡信息。物流、邮件与云存储服务仅接收完成服务所需的信息。"],
+      ["图片与定制资料", "你上传的商品图、定制参考图或聊天截图仅用于当前定制沟通、订单生产和售后核对，不会未经允许用于公开宣传。"],
+      ["数据保护", "后台管理接口使用权限控制，生产环境密钥不公开在前端。我们会尽合理商业措施保护客户资料安全。"],
+      ["用户权利", "你可以联系客服请求查看、修正或删除与订单无关的个人信息；涉及已完成订单、财务与物流记录的信息会按合规要求保留必要期限。"]
+    ],
+    cta: "返回选购订婚戒指"
+  }
 };
 
 const contentProductCategory = {
@@ -1155,32 +1662,251 @@ const contentProductCategory = {
   coupleClassic: "couple",
   coupleDiamond: "couple",
   coupleMinimal: "couple",
-  coupleVintage: "couple",
-  jewelry: "jewelry",
-  earrings: "jewelry",
-  necklaces: "jewelry",
-  bracelets: "jewelry"
+  coupleVintage: "couple"
 };
 
-function ContentPage({ contentKey, setPage, diamonds, openProduct }) {
-  const content = contentPages[contentKey] ?? contentPages.couple;
+const coupleSubcategories = [
+  { key: "coupleClassic", label: "Classic Bands", hint: "Clean everyday bands" },
+  { key: "coupleDiamond", label: "Diamond Pairs", hint: "Subtle diamond details" },
+  { key: "coupleMinimal", label: "Minimal Slim Rings", hint: "Light, refined profiles" },
+  { key: "coupleVintage", label: "Vintage Engraved", hint: "Textured romantic details" }
+];
+
+const coupleProductMatchers = {
+  coupleClassic: ["classic", "素圈", "经典", "band"],
+  coupleDiamond: ["diamond", "带钻", "排钻", "钻"],
+  coupleMinimal: ["minimal", "极简", "窄款"],
+  coupleVintage: ["vintage", "复古", "雕花"]
+};
+
+const brandStorySections = [
+  {
+    title: "A promise beyond rarity",
+    paragraphs: [
+      "A diamond’s true value never lies in rare mining resources, but in the one-of-a-kind sincerity and everlasting promise behind every love story.",
+      "Everastone was born from a simple yet unwavering belief: every genuine love deserves to be gently preserved by a pure, brilliant, and stress-free ring.",
+      "Traditional diamond markets are often bounded by excessive premiums, complicated supply chains, and ethical concerns — weighing down the pure symbolism of love and commitment. We firmly believe that eternity should never be defined by price, and true love should never be limited by cost.",
+      "Rooted in advanced lab-grown diamond craftsmanship, Everastone breaks the limitations of traditional fine jewelry. We do not simply replicate mined diamonds — we create a brighter, purer, and warmer alternative for modern couples who chase sincere and lasting love."
+    ]
+  },
+  {
+    title: "Emotion before craftsmanship",
+    paragraphs: [
+      "From carefully selecting every loose diamond to hand-polishing every delicate curve of the band, Everastone always upholds the philosophy: emotion precedes craftsmanship, and perfection lies in details.",
+      "Every lab-grown diamond we feature carries the identical crystal structure and brilliant light performance as natural diamonds. Free from mining damage and chaotic supply chains, every sparkle is pure, transparent, and timeless.",
+      "We reject assembly-line uniformity and focus entirely on emotional personalized customization. The outline, proportion, and subtle details of each ring are tailored to your unique love — passionate, gentle, minimalist, or resolute. Every love story deserves its own exclusive token.",
+      "Stripping away unnecessary commercial premiums while retaining ultimate quality. We let couples invest in pure romance and lifelong commitment, not artificial scarcity."
+    ]
+  },
+  {
+    title: "The stone of eternity",
+    paragraphs: [
+      "Everastone — the stone of eternity, born for true love.",
+      "We do not chase fleeting trends, only timeless classics that endure years of precipitation. In the fast-paced modern world of love, we choose to be the steady witness. With exquisitely crafted rings, we freeze the heartbeat of proposals, the tenderness of companionship, and the certainty of a lifetime together.",
+      "No matter how you meet and how you stay together, true love is always equal and precious.",
+      "May every Everastone ring walk through time with you, turning every precious moment into everlasting eternity."
+    ]
+  }
+];
+
+function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
+  const designerProducts = diamonds
+    .filter((product) => ["engagement", "wedding", "couple"].includes(product.category))
+    .slice(0, 5);
+  const featuredProducts = designerProducts.length ? designerProducts : diamonds.slice(0, 5);
+  const quickBuy = (product) => {
+    const variant = normalizeProductVariant(product.variants?.[0], product);
+    addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
+  };
+
+  return (
+    <main className="designer-page">
+      <section className="designer-hero">
+        <p className="eyebrow">DESIGNER EDITION</p>
+        <h1>设计师款式</h1>
+        <p>本期主题「赤金星轨」：用黑金对比突出培育钻石的火彩，以一抹红色表达订婚戒指的情绪张力。</p>
+      </section>
+      <section className="designer-track" aria-label="设计师款式商品">
+        {featuredProducts.slice(0, 5).map((product, index) => {
+          const variant = normalizeProductVariant(product.variants?.[0], product);
+          return (
+            <article className="designer-product-card" key={product.id}>
+              <span className="designer-index">0{index + 1}</span>
+              <img src={getPrimaryProductImage(product)} alt={product.name} loading="lazy" />
+              <div>
+                <p className="designer-tag">{Number(product.carat).toFixed(2)}ct · {shapeLabel(product.shape)}</p>
+                <h2>{product.name ?? `${shapeLabel(product.shape)}设计师钻戒`}</h2>
+                <p>设计语言：利落戒臂、主钻高位显光，适合偏高级、纪念感强的订婚场景。</p>
+                <strong>{money(variant.price ?? product.price)}</strong>
+                <div className="designer-card-actions">
+                  <button className="gold-btn" onClick={() => openProduct(product.id)}>查看详情</button>
+                  <button className="redline-btn" onClick={() => quickBuy(product)}>直接购买</button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </section>
+    </main>
+  );
+}
+
+function FeaturedProductGuide({ diamonds, openProduct, addToCart, setPage, title = "Featured Rings", intro = "Start from a finished style, then personalize the diamond, metal and size with our designer." }) {
+  const featured = (diamonds ?? [])
+    .filter((product) => ["engagement", "wedding", "couple"].includes(product.category))
+    .slice(0, 3);
+  const products = featured.length ? featured : (diamonds ?? []).slice(0, 3);
+  const quickAdd = (product) => {
+    const variant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
+    addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
+  };
+
+  if (!products.length) return null;
+
+  return (
+    <section className="page-product-guide" aria-label="Featured product recommendations">
+      <div>
+        <p className="eyebrow">SHOP THE EDIT</p>
+        <h2>{title}</h2>
+        <p>{intro}</p>
+        <button className="secondary-btn" onClick={() => setPage("diamonds")}>View All Engagement Rings</button>
+      </div>
+      <div className="page-product-guide-list">
+        {products.map((product) => (
+          <article className="page-product-guide-card" key={product.id}>
+            <button type="button" onClick={() => openProduct(product.id)} aria-label={`View ${shapeLabelEn(product.shape)} ring`}>
+              <img src={getPrimaryProductImage(product)} alt={`${shapeLabelEn(product.shape)} lab-grown diamond ring`} loading="lazy" />
+            </button>
+            <div>
+              <span>{Number(product.carat).toFixed(2)}ct · {shapeLabelEn(product.shape)}</span>
+              <strong>{shapeLabelEn(product.shape)} Lab-Grown Diamond Ring</strong>
+              <small>{money(product.price)}</small>
+              <button type="button" onClick={() => quickAdd(product)}>Add to Bag</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CustomFlowPage({ setPage, diamonds, openProduct, addToCart }) {
+  const [designerModalOpen, setDesignerModalOpen] = useState(false);
+  const steps = [
+    ["01", UserRound, "Add Your Designer", "Connect with a WhatsApp designer and share your budget, occasion and inspiration references."],
+    ["02", Heart, "Share the Story", "Confirm the center-stone shape, carat range, metal, ring size and preferred delivery window."],
+    ["03", CreditCard, "Place the Deposit", "Approve the direction and secure your design slot before the private order is prepared."],
+    ["04", Sparkles, "Review the Design", "Receive the style direction, proportion notes and detail adjustments before production begins."],
+    ["05", ShieldCheck, "Approve the Finished Piece", "Review photos or video of the finished ring, then confirm certificate, size and packaging details."],
+    ["06", Truck, "Packed and Shipped", "After final inspection, your ring is packed securely and shipped with tracking information."]
+  ];
+
+  return (
+    <main className="custom-flow-page">
+      <section className="custom-flow-hero">
+        <p className="eyebrow">BESPOKE SERVICE</p>
+        <h1>Your Bespoke Ring Timeline</h1>
+        <p>Start with a designer conversation. Share your budget, style and date, then let us shape the details into a ring that feels unmistakably yours.</p>
+        <div className="custom-flow-actions">
+          <button className="primary-btn" onClick={() => setDesignerModalOpen(true)}>Add a Designer</button>
+          <button className="secondary-btn" onClick={() => setPage("diamonds")}>Browse Engagement Rings</button>
+        </div>
+      </section>
+      <section className="custom-timeline" aria-label="Bespoke ring timeline">
+        {steps.map(([step, Icon, title, text]) => (
+          <article className="custom-flow-card" key={step}>
+            <span>{step}</span>
+            <i aria-hidden="true"><Icon size={22} /></i>
+            <div>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+      <FeaturedProductGuide
+        diamonds={diamonds}
+        openProduct={openProduct}
+        addToCart={addToCart}
+        setPage={setPage}
+        title="Begin with a Ring You Love"
+        intro="Explore ready-to-customize engagement rings before your designer refines the diamond, setting and timeline around your story."
+      />
+      {designerModalOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="designer-qr-modal" role="dialog" aria-modal="true" aria-label="Add a WhatsApp designer">
+            <button className="modal-close" onClick={() => setDesignerModalOpen(false)} aria-label="Close"><X size={18} /></button>
+            <img src={whatsappDesignerQr} alt="WhatsApp designer QR code" />
+            <h2>Add Your Designer</h2>
+            <p>Scan the QR code and send screenshots or inspiration images. We will confirm the diamond, metal, budget and delivery plan with you.</p>
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
+}
+
+function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) {
+  if (contentKey === "designer") {
+    return <DesignerStylesPage diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} />;
+  }
+  if (contentKey === "custom" || contentKey === "customProcess") {
+    return <CustomFlowPage setPage={setPage} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} />;
+  }
+  const isCouplePage = Boolean(contentProductCategory[contentKey]);
+  const content = isCouplePage ? contentPages.couple : contentPages[contentKey] ?? contentPages.couple;
   const productCategory = contentProductCategory[contentKey];
   const isCatalogPage = Boolean(productCategory);
   const needsFilters = productCategory === "jewelry";
   const [search, setSearch] = useState("");
   const [shapeFilter, setShapeFilter] = useState("");
   const [sort, setSort] = useState("popular");
+  const coupleMatchers = coupleProductMatchers[contentKey] ?? [];
   const contentProducts = productCategory ? diamonds
     .filter((product) => product.category === productCategory)
+    .filter((product) => !coupleMatchers.length || coupleMatchers.some((keyword) => `${product.name ?? ""} ${product.id}`.toLowerCase().includes(keyword.toLowerCase())))
     .filter((product) => !search || `${product.name ?? ""} ${product.id}`.toLowerCase().includes(search.toLowerCase()))
     .filter((product) => !shapeFilter || product.shape === shapeFilter)
     .sort((a, b) => sort === "price" ? a.price - b.price : sort === "new" ? b.createdAt - a.createdAt : b.sold - a.sold) : [];
   return (
-    <main className="utility-page content-page">
+    <main className={`utility-page content-page${contentKey === "story" ? " brand-story-page" : ""}`}>
       <p className="eyebrow">{content.eyebrow}</p>
       <h1>{content.title}</h1>
       <p className="content-intro">{content.intro}</p>
-      {!isCatalogPage ? <div className="content-card-grid">
+      {contentKey === "story" ? (
+        <section className="brand-story-layout">
+          {brandStorySections.map((section, index) => (
+            <article className="brand-story-section" key={section.title}>
+              <div>
+                <span>{section.title}</span>
+                {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+              </div>
+              <figure>
+                <img
+                  src={index === 0 ? heroRingImage : index === 1 ? shapes.find((shape) => shape.key === "round")?.image : warmGoldHero}
+                  alt={`${section.title} visual`}
+                  loading="lazy"
+                />
+              </figure>
+            </article>
+          ))}
+          <article className="brand-slogan-card">
+            <span>Core Slogan</span>
+            <strong>{homeCopy.footer.slogan.en}</strong>
+          </article>
+        </section>
+      ) : null}
+      {contentKey === "story" ? (
+        <FeaturedProductGuide
+          diamonds={diamonds}
+          openProduct={openProduct}
+          addToCart={addToCart}
+          setPage={setPage}
+          title="Rings That Carry the Promise"
+          intro="Discover the engagement rings our couples love most, then step into the Everastone story behind every piece."
+        />
+      ) : null}
+      {!isCatalogPage && content.cards.length ? <div className="content-card-grid">
         {content.cards.map(([title, text]) => (
           <article className="content-card" key={title}>
             <Sparkles size={18} />
@@ -1190,32 +1916,45 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct }) {
         ))}
       </div> : null}
       {isCatalogPage ? (
-        <section className="content-products">
-          {needsFilters ? <div className="content-filter-bar">
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索日常珠宝" />
-            <select value={shapeFilter} onChange={(event) => setShapeFilter(event.target.value)}>
-              <option value="">全部形状</option>
-              {shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}
-            </select>
-            <select value={sort} onChange={(event) => setSort(event.target.value)}>
-              <option value="popular">热销优先</option>
-              <option value="price">价格从低到高</option>
-              <option value="new">新品优先</option>
-            </select>
-          </div> : null}
-          <div className="results-toolbar">
-            <span>{needsFilters ? "筛选结果" : "商品列表"} · {contentProducts.length} 件</span>
+        <section className={isCouplePage ? "content-products couple-products-layout" : "content-products"}>
+          <div className="content-products-main">
+            {needsFilters ? <div className="content-filter-bar">
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索商品" />
+              <select value={shapeFilter} onChange={(event) => setShapeFilter(event.target.value)}>
+                <option value="">全部形状</option>
+                {shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}
+              </select>
+              <select value={sort} onChange={(event) => setSort(event.target.value)}>
+                <option value="popular">热销优先</option>
+                <option value="price">价格从低到高</option>
+                <option value="new">新品优先</option>
+              </select>
+            </div> : null}
+            <div className="results-toolbar">
+              <span>{needsFilters ? "筛选结果" : "商品列表"} · {contentProducts.length} 件</span>
+            </div>
+            {contentProducts.length ? <div className="product-grid">
+              {contentProducts.map((product) => (
+                <ProductCard product={product} openProduct={openProduct} addToCart={addToCart} key={product.id} />
+              ))}
+            </div> : <p className="content-empty">暂无符合条件的商品，请调整筛选条件。</p>}
           </div>
-          {contentProducts.length ? <div className="product-grid">
-            {contentProducts.map((product) => (
-              <ProductCard product={product} openProduct={openProduct} key={product.id} />
+          {isCouplePage ? (
+            <aside className="couple-subcategory-panel">
+              <span>Choose a Style</span>
+              {coupleSubcategories.map((item) => (
+                <button className={contentKey === item.key ? "active" : ""} key={item.key} onClick={() => setPage("content", { contentKey: item.key })}>
+                  <strong>{item.label}</strong>
+                  <small>{item.hint}</small>
+                </button>
             ))}
-          </div> : <p className="content-empty">暂无符合条件的商品，请调整筛选条件。</p>}
+            </aside>
+          ) : null}
         </section>
       ) : null}
       {!isCatalogPage ? <div className="content-actions">
-        <button className="primary-btn" onClick={() => setPage("diamonds")}>{content.cta ?? "查看相关培育钻石"}</button>
-        <button className="secondary-btn" onClick={() => setPage("home")}>返回首页</button>
+        <button className="primary-btn" onClick={() => setPage("diamonds")}>{content.cta ?? "Explore Engagement Rings"}</button>
+        <button className="secondary-btn" onClick={() => setPage("home")}>Back to Home</button>
       </div> : null}
     </main>
   );
@@ -1224,6 +1963,154 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct }) {
 function Account({ setPage }) {
   const [activePanel, setActivePanel] = useState("orders");
   const [notice, setNotice] = useState("请选择一个功能查看详情。");
+  const [authSession, setAuthSession] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(CUSTOMER_SESSION_STORAGE_KEY) || "null");
+    } catch {
+      return null;
+    }
+  });
+  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authMode, setAuthMode] = useState("login");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestOrders, setGuestOrders] = useState([]);
+  const [guestLookupLoading, setGuestLookupLoading] = useState(false);
+  const [accountOrders, setAccountOrders] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [addresses, setAddresses] = useState([]);
+  const [addressDraft, setAddressDraft] = useState({
+    recipient_name: "",
+    phone: "",
+    country: "United States",
+    state: "",
+    city: "",
+    postal_code: "",
+    address_line1: "",
+    address_line2: "",
+    is_default: false
+  });
+  const accessToken = authSession?.access_token;
+  const currentUser = authSession?.user;
+  const normalizeCustomerOrder = (order = {}) => ({
+    id: order.orderNumber || order.order_number || order.id,
+    orderStatus: order.orderStatus || order.order_status || order.status || "待付款",
+    paymentStatus: order.paymentStatus || order.payment_status || "待付款",
+    amount: Number(order.amount ?? order.order_amount ?? order.total) || 0,
+    items: Array.isArray(order.items) ? order.items : [],
+    trackingNumber: order.trackingNumber || order.tracking_number || order.logistics_no || "",
+    logisticsProvider: order.logisticsProvider || order.logistics_provider || "",
+    orderedAt: order.orderedAt || order.ordered_at || order.created_at
+  });
+  const loadAccountData = async (session = authSession) => {
+    if (!session?.access_token) return;
+    setNotice("正在同步账号数据...");
+    try {
+      const [ordersData, favoritesData, addressesData] = await Promise.all([
+        fetchMyOrders(session.access_token),
+        fetchMyFavorites(session.access_token),
+        fetchMyAddresses(session.access_token)
+      ]);
+      setAccountOrders((ordersData ?? []).map(normalizeCustomerOrder));
+      setFavorites(Array.isArray(favoritesData) ? favoritesData : []);
+      setAddresses(Array.isArray(addressesData) ? addressesData : []);
+      setNotice("账号数据已同步。");
+    } catch (error) {
+      setNotice(error.message || "账号数据同步失败。");
+    }
+  };
+  const saveSession = (session) => {
+    setAuthSession(session);
+    window.localStorage.setItem(CUSTOMER_SESSION_STORAGE_KEY, JSON.stringify(session));
+  };
+  const submitAuth = async () => {
+    if (!authForm.email || !authForm.password) {
+      setNotice("请输入邮箱和密码。");
+      return;
+    }
+    setNotice(authMode === "register" ? "正在注册..." : "正在登录...");
+    try {
+      const payload = authMode === "register"
+        ? await signUpWithEmail(authForm.email, authForm.password)
+        : await signInWithEmail(authForm.email, authForm.password);
+      const session = payload.access_token ? payload : payload.session;
+      if (session?.access_token) {
+        saveSession(session);
+        await loadAccountData(session);
+        setNotice(authMode === "register" ? "注册成功，已登录。" : "登录成功。");
+      } else {
+        setNotice("注册已提交，请查看邮箱完成验证后再登录。");
+      }
+    } catch (error) {
+      setNotice(error.message || "账号操作失败，请稍后重试。");
+    }
+  };
+  const recoverPassword = async () => {
+    if (!authForm.email || !authForm.email.includes("@")) {
+      setNotice("请输入需要找回密码的邮箱。");
+      return;
+    }
+    try {
+      await sendPasswordRecovery(authForm.email);
+      setNotice("找回密码邮件已发送，请查看邮箱。");
+    } catch (error) {
+      setNotice(error.message || "找回密码邮件发送失败。");
+    }
+  };
+  const logout = () => {
+    window.localStorage.removeItem(CUSTOMER_SESSION_STORAGE_KEY);
+    setAuthSession(null);
+    setAccountOrders([]);
+    setFavorites([]);
+    setAddresses([]);
+    setNotice("已退出登录。");
+  };
+  const submitAddress = async () => {
+    if (!accessToken || !currentUser?.id) {
+      setNotice("请先登录后再保存地址。");
+      return;
+    }
+    if (!addressDraft.recipient_name || !addressDraft.address_line1 || !addressDraft.city) {
+      setNotice("请至少填写收件人、街道地址和城市。");
+      return;
+    }
+    try {
+      await saveMyAddress(accessToken, { ...addressDraft, user_id: currentUser.id });
+      setAddressDraft({ recipient_name: "", phone: "", country: "United States", state: "", city: "", postal_code: "", address_line1: "", address_line2: "", is_default: false });
+      await loadAccountData();
+      setNotice("地址已保存。");
+    } catch (error) {
+      setNotice(error.message || "地址保存失败。");
+    }
+  };
+  const removeAddress = async (id) => {
+    try {
+      await deleteMyAddress(accessToken, id);
+      setAddresses((items) => items.filter((item) => item.id !== id));
+      setNotice("地址已删除。");
+    } catch (error) {
+      setNotice(error.message || "地址删除失败。");
+    }
+  };
+  useEffect(() => {
+    if (authSession?.access_token) loadAccountData(authSession);
+  }, []);
+  const searchGuestOrders = async () => {
+    if (!guestEmail || !guestEmail.includes("@")) {
+      setNotice("请输入下单时使用的邮箱。");
+      return;
+    }
+    setGuestLookupLoading(true);
+    setNotice("正在查询订单...");
+    try {
+      const orders = await lookupGuestOrders(guestEmail);
+      setGuestOrders(orders);
+      setNotice(orders.length ? `找到 ${orders.length} 个订单。` : "没有查询到该邮箱的订单。");
+    } catch (error) {
+      setNotice(error.message || "订单查询失败，请稍后重试。");
+    } finally {
+      setGuestLookupLoading(false);
+    }
+  };
   const panels = {
     orders: {
       title: "历史订单",
@@ -1245,7 +2132,7 @@ function Account({ setPage }) {
     },
     addresses: {
       title: "地址管理",
-      text: "管理美国与英国收货地址。",
+      text: "管理常用收货地址与默认配送信息。",
       rows: ["Olivia · New York, United States · 默认地址", "Emma · London, United Kingdom", "Mia · Austin, United States"],
       actions: [["新增地址", "新增地址表单已打开"], ["编辑地址", "地址编辑面板已打开"], ["设为默认", "已设置默认地址"]]
     }
@@ -1261,6 +2148,33 @@ function Account({ setPage }) {
   return (
     <main className="utility-page">
       <h1>个人中心</h1>
+      <section className="auth-panel">
+        {authSession ? (
+          <div className="auth-signed-in">
+            <div>
+              <p className="eyebrow">SIGNED IN</p>
+              <h2>{authSession.user?.email}</h2>
+              <p>已登录账号，可查看订单、收藏商品和管理地址。</p>
+            </div>
+            <button className="secondary-btn" onClick={logout}>退出登录</button>
+          </div>
+        ) : (
+          <div className="auth-box">
+            <div>
+              <p className="eyebrow">EMAIL ACCOUNT</p>
+              <h2>{authMode === "register" ? "邮箱注册" : "邮箱登录"}</h2>
+              <p>游客仍可下单；登录后可长期保存订单、收藏和地址。</p>
+            </div>
+            <div className="auth-form">
+              <input type="email" value={authForm.email} onChange={(event) => setAuthForm((current) => ({ ...current, email: event.target.value }))} placeholder="邮箱" />
+              <input type="password" value={authForm.password} onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="密码" />
+              <button className="primary-btn" onClick={submitAuth}>{authMode === "register" ? "注册" : "登录"}</button>
+              <button className="secondary-btn" onClick={() => setAuthMode((mode) => mode === "register" ? "login" : "register")}>{authMode === "register" ? "已有账号，去登录" : "没有账号，去注册"}</button>
+              <button className="text-link" onClick={recoverPassword}>找回密码</button>
+            </div>
+          </div>
+        )}
+      </section>
       <div className="account-grid">
         {cards.map(([Icon, key]) => (
           <button className={activePanel === key ? "account-card active" : "account-card"} key={key} onClick={() => { setActivePanel(key); setNotice(`已打开：${panels[key].title}`); }}>
@@ -1276,28 +2190,166 @@ function Account({ setPage }) {
           <h2>{active.title}</h2>
           <p>{notice}</p>
         </div>
-        <div className="account-list">
-          {active.rows.map((row) => <button key={row} onClick={() => setNotice(`已选择：${row}`)}>{row}</button>)}
-        </div>
-        <div className="account-actions">
-          {active.actions.map(([label, message]) => (
-            <button
-              className={label.includes("继续") || label.includes("进入") ? "primary-btn" : "secondary-btn"}
-              key={label}
-              onClick={() => {
-                setNotice(message);
-                if (label === "继续挑选" || label === "再次购买") setPage("diamonds");
-                if (label === "进入定制") setPage("content", { contentKey: "custom" });
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {activePanel === "orders" ? (
+          <div className="guest-order-lookup">
+            {authSession ? (
+              <div className="guest-order-list">
+                {(accountOrders.length ? accountOrders : []).map((order) => (
+                  <article className="guest-order-card" key={order.id}>
+                    <div><span>订单号</span><strong>{order.id}</strong></div>
+                    <div><span>订单状态</span><strong>{order.orderStatus}</strong></div>
+                    <div><span>支付状态</span><strong>{order.paymentStatus}</strong></div>
+                    <div><span>订单金额</span><strong>{money(order.amount)}</strong></div>
+                    <p>{(order.items ?? []).map((item) => `${item.title} × ${item.quantity} · ${item.material || ""} · ${item.size || ""}`).join("；") || "暂无商品明细"}</p>
+                    {order.trackingNumber ? <p>物流：{order.logisticsProvider} {order.trackingNumber}</p> : <p>物流：等待发货</p>}
+                  </article>
+                ))}
+                {!accountOrders.length ? <p>当前账号暂无订单。</p> : null}
+              </div>
+            ) : null}
+            <div className="guest-order-form">
+              <input type="email" value={guestEmail} onChange={(event) => setGuestEmail(event.target.value)} placeholder="输入下单邮箱查询订单" />
+              <button className="primary-btn" disabled={guestLookupLoading} onClick={searchGuestOrders}>{guestLookupLoading ? "查询中..." : "查询订单"}</button>
+            </div>
+            <div className="guest-order-list">
+              {guestOrders.map((order) => (
+                <article className="guest-order-card" key={order.id}>
+                  <div>
+                    <span>订单号</span>
+                    <strong>{order.orderNumber || order.id}</strong>
+                  </div>
+                  <div>
+                    <span>订单状态</span>
+                    <strong>{order.orderStatus}</strong>
+                  </div>
+                  <div>
+                    <span>支付状态</span>
+                    <strong>{order.paymentStatus}</strong>
+                  </div>
+                  <div>
+                    <span>订单金额</span>
+                    <strong>{money(order.amount)}</strong>
+                  </div>
+                  <p>{(order.items ?? []).map((item) => `${item.title} × ${item.quantity} · ${item.material || ""} · ${item.size || ""}`).join("；")}</p>
+                  {order.trackingNumber ? <p>物流：{order.logisticsProvider} {order.trackingNumber}</p> : <p>物流：等待发货</p>}
+                </article>
+              ))}
+            </div>
+            <div className="account-actions">
+              <button className="primary-btn" onClick={() => setPage("diamonds")}>继续挑选</button>
+            </div>
+          </div>
+        ) : activePanel === "favorites" ? (
+          <div className="guest-order-lookup">
+            {authSession ? (
+              <div className="guest-order-list">
+                {favorites.map((favorite) => {
+                  const product = favorite.products ?? {};
+                  return (
+                    <article className="guest-order-card" key={favorite.id}>
+                      <div><span>商品</span><strong>{product.name || favorite.product_id}</strong></div>
+                      <div><span>SKU</span><strong>{favorite.product_id}</strong></div>
+                      <div><span>价格</span><strong>{product.price ? money(product.price) : "-"}</strong></div>
+                      <div><span>收藏时间</span><strong>{favorite.created_at ? new Date(favorite.created_at).toLocaleDateString("zh-CN") : "-"}</strong></div>
+                    </article>
+                  );
+                })}
+                {!favorites.length ? <p>暂无收藏商品。进入商品详情点击“收藏商品”即可保存。</p> : null}
+              </div>
+            ) : <p>请先登录后查看收藏商品。</p>}
+            <div className="account-actions"><button className="primary-btn" onClick={() => setPage("diamonds")}>继续挑选</button></div>
+          </div>
+        ) : activePanel === "addresses" ? (
+          <div className="address-manager">
+            {authSession ? (
+              <>
+                <div className="address-form">
+                  <input placeholder="收件人" value={addressDraft.recipient_name} onChange={(event) => setAddressDraft((current) => ({ ...current, recipient_name: event.target.value }))} />
+                  <input placeholder="电话" value={addressDraft.phone} onChange={(event) => setAddressDraft((current) => ({ ...current, phone: event.target.value }))} />
+                  <select value={addressDraft.country} onChange={(event) => setAddressDraft((current) => ({ ...current, country: event.target.value }))}><option>United States</option><option>United Kingdom</option></select>
+                  <input placeholder="州 / 郡" value={addressDraft.state} onChange={(event) => setAddressDraft((current) => ({ ...current, state: event.target.value }))} />
+                  <input placeholder="城市" value={addressDraft.city} onChange={(event) => setAddressDraft((current) => ({ ...current, city: event.target.value }))} />
+                  <input placeholder="邮编" value={addressDraft.postal_code} onChange={(event) => setAddressDraft((current) => ({ ...current, postal_code: event.target.value }))} />
+                  <input className="wide" placeholder="街道地址" value={addressDraft.address_line1} onChange={(event) => setAddressDraft((current) => ({ ...current, address_line1: event.target.value }))} />
+                  <input className="wide" placeholder="公寓、套房、门牌号" value={addressDraft.address_line2} onChange={(event) => setAddressDraft((current) => ({ ...current, address_line2: event.target.value }))} />
+                  <label className="check-row"><input type="checkbox" checked={addressDraft.is_default} onChange={(event) => setAddressDraft((current) => ({ ...current, is_default: event.target.checked }))} /> 设为默认地址</label>
+                  <button className="primary-btn" onClick={submitAddress}>保存地址</button>
+                </div>
+                <div className="guest-order-list">
+                  {addresses.map((address) => (
+                    <article className="guest-order-card" key={address.id}>
+                      <div><span>收件人</span><strong>{address.recipient_name}</strong></div>
+                      <div><span>电话</span><strong>{address.phone || "-"}</strong></div>
+                      <div><span>国家</span><strong>{address.country}</strong></div>
+                      <div><span>默认</span><strong>{address.is_default ? "是" : "否"}</strong></div>
+                      <p>{[address.address_line1, address.address_line2, address.city, address.state, address.postal_code].filter(Boolean).join(", ")}</p>
+                      <button className="secondary-btn" onClick={() => removeAddress(address.id)}>删除地址</button>
+                    </article>
+                  ))}
+                  {!addresses.length ? <p>暂无保存地址。</p> : null}
+                </div>
+              </>
+            ) : <p>请先登录后管理收货地址。</p>}
+          </div>
+        ) : (
+          <>
+            <div className="account-list">
+              {active.rows.map((row) => <button key={row} onClick={() => setNotice(`已选择：${row}`)}>{row}</button>)}
+            </div>
+            <div className="account-actions">
+              {active.actions.map(([label, message]) => (
+                <button
+                  className={label.includes("继续") || label.includes("进入") ? "primary-btn" : "secondary-btn"}
+                  key={label}
+                  onClick={() => {
+                    setNotice(message);
+                    if (label === "继续挑选" || label === "再次购买") setPage("diamonds");
+                    if (label === "进入定制") setPage("content", { contentKey: "custom" });
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </section>
     </main>
   );
 }
+
+const formatOrderAddress = (address = {}) => [
+  address.firstName || address.lastName ? `${address.firstName ?? ""} ${address.lastName ?? ""}`.trim() : "",
+  address.addressLine1,
+  address.addressLine2,
+  address.city,
+  address.state,
+  address.postalCode,
+  address.country
+].filter(Boolean).join(", ");
+
+const mapApiOrderToAdminOrder = (order = {}) => {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const firstItem = items[0] ?? {};
+  return {
+    id: order.orderNumber || order.id,
+    userId: order.email,
+    email: order.email,
+    amount: Number(order.amount) || 0,
+    paid: order.paymentStatus || "待付款",
+    status: order.orderStatus || "待付款",
+    country: order.address?.country || "",
+    type: firstItem.title?.includes("对戒") ? "对戒" : firstItem.title?.includes("项链") || firstItem.title?.includes("耳") ? "首饰" : "钻戒成品",
+    payment: "PayPal",
+    transaction: order.paymentIntentId || "",
+    address: formatOrderAddress(order.address),
+    items: items.map((item) => `${item.title} × ${item.quantity} · ${item.material || ""} · ${item.size || ""}`).join("；"),
+    logistics: order.trackingNumber ? `${order.logisticsProvider || "物流"} ${order.trackingNumber}` : "待发货",
+    note: "",
+    refund: ["退款中", "已退款"].includes(order.orderStatus) ? order.orderStatus : "无",
+    raw: order
+  };
+};
 
 function Admin({ diamonds, setDiamonds }) {
   const [adminTab, setAdminTab] = useState("products");
@@ -1464,13 +2516,14 @@ function Admin({ diamonds, setDiamonds }) {
       refund: "售后窗口开启"
     }
   ]);
+  const [analyticsSummary, setAnalyticsSummary] = useState(null);
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0];
   const filteredDiamonds = diamonds.filter((diamond) => {
     const keyword = `${diamond.id} ${shapeLabel(diamond.shape)} ${diamond.color} ${diamond.clarity} ${diamond.certificate}`.toLowerCase();
     return keyword.includes(productSearch.toLowerCase());
   });
   const filteredOrders = orders.filter((order) => `${order.id} ${order.email} ${order.country} ${order.status}`.toLowerCase().includes(orderSearch.toLowerCase()));
-  const statusFlow = ["待付款", "已付款待确认", "定制生产中", "待发货", "已发货", "已完成", "售后中", "已取消", "退款完成"];
+  const statusFlow = ["待付款", "已付款", "制作中", "已发货", "已完成", "已取消", "退款中", "已退款"];
   const logAction = (message) => setAdminLogs((items) => [`${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} ${message}`, ...items].slice(0, 12));
   const saveAdminToken = () => {
     setAdminApiToken(adminTokenInput.trim());
@@ -1667,8 +2720,22 @@ function Admin({ diamonds, setDiamonds }) {
   const removeVariant = (index) => {
     setProductDraft((current) => ({ ...current, variants: (current.variants ?? []).filter((_, variantIndex) => variantIndex !== index) }));
   };
-  const updateOrder = (id, patch) => {
+  const updateOrder = async (id, patch) => {
     setOrders((items) => items.map((order) => order.id === id ? { ...order, ...patch } : order));
+    try {
+      const apiPatch = {
+        orderStatus: patch.status,
+        paymentStatus: patch.paid,
+        trackingNumber: patch.trackingNumber || (patch.logistics && !patch.logistics.includes("待") ? patch.logistics.replace(/^(FedEx|DHL|UPS|Royal Mail)\s*/i, "") : undefined),
+        logisticsProvider: patch.logisticsProvider || (patch.logistics?.match(/^(FedEx|DHL|UPS|Royal Mail)/i)?.[0] ?? undefined),
+        note: patch.note
+      };
+      const savedOrder = await updateAdminOrder(id, apiPatch);
+      setOrders((items) => items.map((order) => order.id === id ? mapApiOrderToAdminOrder(savedOrder) : order));
+      logAction(`${id} 已同步更新到订单数据库`);
+    } catch (error) {
+      setApiNotice(`订单本地已更新，但同步数据库失败：${error.message}`);
+    }
   };
 
   useEffect(() => {
@@ -1749,13 +2816,35 @@ function Admin({ diamonds, setDiamonds }) {
     });
   }, [diamonds]);
 
+  useEffect(() => {
+    fetchAdminOrders()
+      .then((remoteOrders) => {
+        if (remoteOrders.length) {
+          const mappedOrders = remoteOrders.map(mapApiOrderToAdminOrder);
+          setOrders(mappedOrders);
+          setSelectedOrderId(mappedOrders[0].id);
+        }
+      })
+      .catch((error) => {
+        setApiNotice(`暂未读取真实订单：${error.message}`);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchAdminAnalyticsSummary()
+      .then((summary) => setAnalyticsSummary(summary))
+      .catch((error) => {
+        setApiNotice(`暂未读取真实统计：${error.message}`);
+      });
+  }, []);
+
   return (
     <main className="admin-page">
       <section className="admin-hero">
         <LayoutDashboard />
         <div>
-          <p className="eyebrow">海外 B2C 培育钻石电商后台</p>
-          <h1>Eternastone 珠宝管理后台</h1>
+          <p className="eyebrow">全球培育钻石电商后台</p>
+          <h1>everastone 管理后台</h1>
           <p>商品管理、类目管理、订单管理、订单数据与流量统计一体化，钻石参数与前台筛选栏同源维护。</p>
         </div>
         <div className="admin-token-box">
@@ -1965,7 +3054,7 @@ function Admin({ diamonds, setDiamonds }) {
               <h2>类目管理</h2>
               <div className="admin-columns">
                 <article><h3>一级类目</h3>{["订婚戒指", "情侣对戒", "日常珠宝", "定制戒指"].map((item, index) => <p key={item}>#{index + 1} {item} / Enabled / SEO 可编辑</p>)}</article>
-                <article><h3>二级子类目</h3><p>圆形钻戒、垫形钻戒、祖母绿钻戒、水滴钻戒、复古款钻戒、素圈对戒、耳饰、项链、手链。</p></article>
+                <article><h3>二级子类目</h3><p>圆形钻戒、祖母绿钻戒、水滴钻戒、公主方钻戒、复古款钻戒、素圈对戒、耳饰、项链、手链。</p></article>
                 <article><h3>筛选标签管理</h3>{optionGroups.map(([title, list]) => <p key={title}>{title}：{list.join(" / ")}</p>)}</article>
               </div>
             </section>
@@ -2061,18 +3150,42 @@ function Admin({ diamonds, setDiamonds }) {
           {adminTab === "sales" ? (
             <section className="admin-panel large">
               <h2>订单数据分析报表</h2>
-              <div className="admin-kpis"><article><span>总订单</span><strong>1,286</strong></article><article><span>销售额</span><strong>$428K</strong></article><article><span>成交克拉</span><strong>2,184 ct</strong></article><article><span>客单价</span><strong>$3,328</strong></article><article><span>退款率</span><strong>2.8%</strong></article></div>
-              <div className="admin-chart">销售额趋势 / 销量柱状图 / 国家销售分布地图预留区</div>
-              <div className="admin-columns"><article><h3>钻石专项统计</h3><p>按克拉区间、证书类型、钻石形状、切工、荧光反应统计销量。</p></article><article><h3>报表导出</h3><p>支持按时间、国家、商品类型导出 CSV。</p></article></div>
+              <div className="admin-kpis">
+                <article><span>总订单</span><strong>{analyticsSummary?.orders?.total ?? orders.length}</strong></article>
+                <article><span>已付款订单</span><strong>{analyticsSummary?.orders?.paid ?? orders.filter((order) => order.paid === "已付款").length}</strong></article>
+                <article><span>销售额</span><strong>{money(analyticsSummary?.orders?.salesAmount ?? orders.reduce((sum, order) => sum + Number(order.amount || 0), 0))}</strong></article>
+                <article><span>成交克拉</span><strong>{Number(analyticsSummary?.orders?.totalCarat ?? 0).toFixed(2)} ct</strong></article>
+                <article><span>客单价</span><strong>{money(analyticsSummary?.orders?.averageOrderValue ?? 0)}</strong></article>
+                <article><span>退款率</span><strong>{((analyticsSummary?.orders?.refundRate ?? 0) * 100).toFixed(1)}%</strong></article>
+              </div>
+              <div className="admin-chart">
+                {(analyticsSummary?.orders?.topProducts ?? []).length ? (
+                  <div className="analytics-list">
+                    {(analyticsSummary?.orders?.topProducts ?? []).map((item) => <p key={item.productId}><span>{item.title}</span><strong>{item.quantity} 件 / {money(item.amount)}</strong></p>)}
+                  </div>
+                ) : "暂无真实销售数据，付款订单产生后会自动统计。"}
+              </div>
+              <div className="admin-columns"><article><h3>钻石专项统计</h3><p>根据已付款订单统计销售额、成交克拉、客单价、退款率与热销商品。</p></article><article><h3>报表导出</h3><p>下一步可继续增加 CSV 导出、时间筛选和国家维度统计。</p></article></div>
             </section>
           ) : null}
 
           {adminTab === "traffic" ? (
             <section className="admin-panel large">
               <h2>流量统计</h2>
-              <div className="admin-kpis"><article><span>UV</span><strong>18,420</strong></article><article><span>PV</span><strong>64,108</strong></article><article><span>加购</span><strong>842</strong></article><article><span>下单转化率</span><strong>3.6%</strong></article></div>
+              <div className="admin-kpis">
+                <article><span>PV</span><strong>{analyticsSummary?.traffic?.pageViews ?? 0}</strong></article>
+                <article><span>商品浏览</span><strong>{analyticsSummary?.traffic?.productViews ?? 0}</strong></article>
+                <article><span>加购</span><strong>{analyticsSummary?.traffic?.addToCart ?? 0}</strong></article>
+                <article><span>开始结算</span><strong>{analyticsSummary?.traffic?.checkoutStarts ?? 0}</strong></article>
+                <article><span>PayPal 发起</span><strong>{analyticsSummary?.traffic?.paypalStarts ?? 0}</strong></article>
+                <article><span>成功付款</span><strong>{analyticsSummary?.traffic?.paypalPaid ?? 0}</strong></article>
+              </div>
               <div className="admin-funnel"><span>访客访问</span><span>浏览商品</span><span>加入购物车</span><span>提交订单</span><span>成功付款</span></div>
-              <div className="admin-columns"><article><h3>来源分析</h3><p>Google SEO、Google Ads、Facebook、YouTube、WhatsApp、直接访问。</p></article><article><h3>页面排行</h3><p>首页、订婚戒指分类页、裸钻筛选页、商品详情页。</p></article><article><h3>访客国家</h3><p>美国、英国、加拿大、澳大利亚访问与下单统计。</p></article></div>
+              <div className="admin-columns">
+                <article><h3>页面排行</h3>{(analyticsSummary?.traffic?.topPages ?? []).length ? (analyticsSummary?.traffic?.topPages ?? []).map((item) => <p key={item.path}>{item.path}：{item.count}</p>) : <p>暂无访问事件，页面被浏览后会自动记录。</p>}</article>
+                <article><h3>转化漏斗</h3><p>从 PV、商品浏览、加购、结算、PayPal 发起、付款成功逐步统计。</p></article>
+                <article><h3>来源分析</h3><p>当前为站内事件统计；上线后可再接 Google Analytics / Meta Pixel 做广告来源归因。</p></article>
+              </div>
             </section>
           ) : null}
 
@@ -2097,18 +3210,23 @@ function Admin({ diamonds, setDiamonds }) {
   );
 }
 
-function Footer() {
+function Footer({ openContent }) {
   return (
     <footer className="site-footer">
       <div>
-        <strong>Eternastone 珠宝</strong>
-        <p>面向美国与英国客户的高级培育钻石设计师珠宝品牌。</p>
+        <strong>everastone</strong>
+        <p>{homeCopy.footer.brandText.en}</p>
+        <p>{homeCopy.footer.slogan.en}</p>
       </div>
       <div>
-        <span>美国与英国保价配送</span>
-        <span>符合条件未佩戴商品支持 30 天退换</span>
-        <span>隐私优先的客户服务</span>
-        <span>support@hengshijewelry.example</span>
+        <span>{homeCopy.footer.insured.en}</span>
+        <span>{homeCopy.footer.returns.en}</span>
+        <button className="footer-link" onClick={() => openContent("shipping")}>Shipping Policy</button>
+        <button className="footer-link" onClick={() => openContent("returns")}>Returns Policy</button>
+        <button className="footer-link" onClick={() => openContent("warranty")}>Warranty Policy</button>
+        <button className="footer-link" onClick={() => openContent("terms")}>Terms of Service</button>
+        <button className="footer-link" onClick={() => openContent("privacy")}>Privacy Policy</button>
+        <span>{homeCopy.footer.email.en}</span>
       </div>
     </footer>
   );
@@ -2218,6 +3336,80 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const contentTitleMap = {
+      couple: "Matching Rings",
+      coupleClassic: "Matching Rings",
+      coupleDiamond: "Matching Rings",
+      coupleMinimal: "Matching Rings",
+      coupleVintage: "Matching Rings",
+      designer: "Designer Editions",
+      custom: "Bespoke Rings",
+      customProcess: "Bespoke Ring Timeline",
+      customDiamond: "Choose a Diamond",
+      customSetting: "Choose a Setting",
+      story: "Brand Story",
+      privacy: "Privacy Policy",
+      terms: "Terms of Service",
+      returns: "Return Policy",
+      warranty: "Warranty Policy"
+    };
+    const titleMap = {
+      home: "everastone | Bespoke Lab-Grown Diamond Jewelry",
+      diamonds: "Engagement Rings | everastone",
+      product: `${selectedProduct?.name ?? "Product Details"} | everastone`,
+      cart: "Cart | everastone",
+      checkout: "Secure Checkout | everastone",
+      account: "My Account | everastone",
+      admin: "Admin | everastone",
+      content: `${contentTitleMap[contentKey] ?? "Brand Content"} | everastone`
+    };
+    const description = selectedProduct && page === "product"
+      ? `${selectedProduct.name ?? shapeLabel(selectedProduct.shape)} supports secure PayPal checkout, a 10% first-order offer, and global air delivery.`
+      : "everastone creates bespoke lab-grown diamond engagement rings, matching rings, and designer editions with online checkout, PayPal payment, and global delivery.";
+    updateSeoMeta({ title: titleMap[page] ?? titleMap.home, description });
+    const existingJsonLd = document.getElementById("product-json-ld");
+    if (page === "product" && selectedProduct?.id) {
+      const jsonLd = existingJsonLd ?? document.createElement("script");
+      jsonLd.id = "product-json-ld";
+      jsonLd.type = "application/ld+json";
+      jsonLd.textContent = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: selectedProduct.name ?? `${shapeLabel(selectedProduct.shape)}培育钻石戒指`,
+        image: getProductMedia(selectedProduct).images.slice(0, 6),
+        description: selectedProduct.description ?? description,
+        sku: selectedProduct.id,
+        brand: { "@type": "Brand", name: "everastone" },
+        offers: {
+          "@type": "Offer",
+          priceCurrency: "USD",
+          price: Number(selectedProduct.price ?? 0),
+          availability: Number(selectedProduct.stock ?? 0) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          url: window.location.href
+        }
+      });
+      if (!existingJsonLd) document.head.appendChild(jsonLd);
+    } else if (existingJsonLd) {
+      existingJsonLd.remove();
+    }
+    trackAnalyticsEvent({
+      eventType: "page_view",
+      pagePath: window.location.pathname,
+      productId: page === "product" ? selectedProduct?.id : undefined,
+      sessionId: getAnalyticsSessionId()
+    }).catch(() => {});
+    if (page === "product" && selectedProduct?.id) {
+      trackAnalyticsEvent({
+        eventType: "product_view",
+        pagePath: window.location.pathname,
+        productId: selectedProduct.id,
+        sessionId: getAnalyticsSessionId(),
+        metadata: { name: selectedProduct.name, price: selectedProduct.price }
+      }).catch(() => {});
+    }
+  }, [page, contentKey, selectedProduct?.id]);
+
   const openProduct = (id) => {
     setSelectedId(id);
     setPage("product", { productId: id });
@@ -2239,12 +3431,19 @@ export function App() {
         cartId: `${product.id}-${metal}-${size}-${Date.now()}`,
         title: product.name ?? `${product.carat.toFixed(2)} ct ${shapeLabel(product.shape)} 培育钻石戒指`,
         price: product.price,
-        image: product.image,
+        image: getPrimaryProductImage(product),
         metal,
         size,
         qty: 1
       }
     ]);
+    trackAnalyticsEvent({
+      eventType: "add_to_cart",
+      pagePath: window.location.pathname,
+      productId: product.id,
+      sessionId: getAnalyticsSessionId(),
+      metadata: { title: product.name ?? product.title, metal, size, price: product.price }
+    }).catch(() => {});
   };
   const submitOrder = (count = 1) => {
     setServiceCount((current) => current + Math.max(1, Number(count) || 1));
@@ -2254,14 +3453,14 @@ export function App() {
     <>
       {page !== "admin" ? <Header page={page} setPage={setPage} setFilters={setFilters} openContent={openContent} cartCount={cart.reduce((sum, item) => sum + item.qty, 0)} serviceCount={serviceCount} /> : null}
       {page === "home" ? <Home setPage={setPage} applyPreset={applyPreset} /> : null}
-      {page === "diamonds" ? <FilterPage filters={filters} setFilters={setFilters} diamonds={diamonds} openProduct={openProduct} /> : null}
+      {page === "diamonds" ? <FilterPage filters={filters} setFilters={setFilters} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}
       {page === "product" ? <ProductDetail product={selectedProduct} addToCart={addToCart} setPage={setPage} products={diamonds} openProduct={openProduct} /> : null}
       {page === "cart" ? <Cart cart={cart} setCart={setCart} setPage={setPage} /> : null}
       {page === "checkout" ? <Checkout cart={cart} onSubmitOrder={submitOrder} /> : null}
       {page === "account" ? <Account setPage={setPage} /> : null}
-      {page === "content" ? <ContentPage contentKey={contentKey} setPage={setPage} diamonds={diamonds} openProduct={openProduct} /> : null}
+      {page === "content" ? <ContentPage contentKey={contentKey} setPage={setPage} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}
       {page === "admin" ? <Admin diamonds={diamonds} setDiamonds={setDiamonds} /> : null}
-      {page !== "admin" ? <Footer /> : null}
+      {page !== "admin" ? <Footer openContent={openContent} /> : null}
     </>
   );
 }

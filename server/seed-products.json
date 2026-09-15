@@ -128,38 +128,6 @@
     "sold": 56
   },
   {
-    "sku": "LD-1005",
-    "category": "engagement",
-    "name": "1.35 CT 垫形培育钻石戒指",
-    "price": 1650,
-    "stock": 9,
-    "material": "14K 黄金",
-    "mainStone": "培育钻石",
-    "shape": "cushion",
-    "carat": "1.35",
-    "color": "H",
-    "clarity": "VS2",
-    "cut": "Very Good",
-    "certificate": "IGI",
-    "polish": "Excellent",
-    "symmetry": "Very Good",
-    "depth": "66.2%",
-    "table": "61%",
-    "ratio": "1.06",
-    "fluorescence": "Faint",
-    "size": "US 5-9 / UK J-R",
-    "status": "上架",
-    "description": "垫形钻石轮廓柔和复古，火彩集中，适合温暖金色戒托与故事感设计。",
-    "imageCaption": "上传图片为 1.35ct 垫形实物图",
-    "images": ["https://images.unsplash.com/photo-1506630448388-4e683c67ddb0?auto=format&fit=crop&w=1200&q=85"],
-    "variants": [
-      { "carat": "1.00", "material": "14K 黄金", "price": 1222 },
-      { "carat": "1.50", "material": "18K 黄金", "price": 1880 },
-      { "carat": "2.00", "material": "铂金", "price": 2780 }
-    ],
-    "sold": 74
-  },
-  {
     "sku": "LD-1006",
     "category": "engagement",
     "name": "2.42 CT 马眼形培育钻石戒指",

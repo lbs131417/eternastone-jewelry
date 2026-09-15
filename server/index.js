@@ -22,9 +22,19 @@ const supabaseRestUrl = supabaseUrl ? `${supabaseUrl}/rest/v1` : "";
 const supabaseStorageUrl = supabaseUrl ? `${supabaseUrl}/storage/v1` : "";
 const supabaseStorageBucket = process.env.SUPABASE_STORAGE_BUCKET || "product-images1";
 const adminApiToken = process.env.ADMIN_API_TOKEN || "";
+const adminEmail = process.env.ADMIN_EMAIL || "";
+const resendApiKey = process.env.RESEND_API_KEY || "";
+const orderEmailFrom = process.env.ORDER_EMAIL_FROM || "everastone <orders@everastone.com>";
+const paypalClientId = process.env.PAYPAL_CLIENT_ID || "";
+const paypalClientSecret = process.env.PAYPAL_CLIENT_SECRET || "";
+const paypalWebhookId = process.env.PAYPAL_WEBHOOK_ID || "";
+const paypalMode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase();
+const paypalApiBase = paypalMode === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 
-const allowedShapes = new Set(["round", "cushion", "emerald", "pear", "asscher", "princess", "oval", "heart", "marquise", "radiant"]);
+const allowedShapes = new Set(["round", "emerald", "pear", "asscher", "princess", "oval", "heart", "marquise", "radiant"]);
 const allowedCategories = new Set(["engagement", "jewelry", "couple", "wedding"]);
+const allowedOrderStatuses = new Set(["待付款", "已付款", "制作中", "已发货", "已完成", "已取消", "退款中", "已退款"]);
+const allowedPaymentStatuses = new Set(["待付款", "已付款", "退款中", "已退款", "支付失败", "已取消"]);
 
 function getSupabaseKey(admin = false) {
   return admin ? supabaseServiceRoleKey : supabaseServiceRoleKey || supabaseAnonKey;
@@ -94,6 +104,10 @@ function cleanText(value, fallback = "") {
 function toNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function moneyValue(value) {
+  return Math.max(0, toNumber(value)).toFixed(2);
 }
 
 function normalizeMainMaterial(value = "") {
@@ -234,6 +248,274 @@ function rowToProduct(row = {}) {
   };
 }
 
+function normalizeOrderItem(item = {}) {
+  const quantity = Math.max(1, Math.round(toNumber(item.quantity || item.qty, 1)));
+  const unitPrice = toNumber(item.unitPrice || item.price);
+  const specs = item.specs || {
+    material: cleanText(item.material || item.metal),
+    size: cleanText(item.size),
+    carat: cleanText(item.carat),
+    shape: cleanText(item.shape),
+    purity: cleanText(item.purity)
+  };
+  return {
+    productId: cleanText(item.productId || item.id),
+    sku: cleanText(item.sku || item.productId || item.id),
+    title: cleanText(item.title || item.name),
+    image: cleanText(item.image),
+    specs,
+    material: cleanText(item.material || item.metal || specs.material),
+    size: cleanText(item.size || specs.size),
+    quantity,
+    unitPrice,
+    lineTotal: toNumber(item.lineTotal, quantity * unitPrice)
+  };
+}
+
+function rowToOrder(row = {}) {
+  return {
+    id: row.id,
+    orderNumber: row.order_number || row.id,
+    email: row.customer_email,
+    items: row.items ?? [],
+    productInfo: row.product_info ?? row.items ?? [],
+    productSpecs: row.product_specs ?? [],
+    size: row.ring_size,
+    address: row.shipping_address ?? {},
+    paymentStatus: row.payment_status,
+    orderStatus: row.order_status || row.status,
+    status: row.status,
+    trackingNumber: row.tracking_number || row.logistics_no || "",
+    logisticsProvider: row.logistics_provider || "",
+    logisticsUrl: row.logistics_url || "",
+    paymentIntentId: row.payment_intent_id || "",
+    amount: Number(row.order_amount ?? row.total) || 0,
+    discount: Number(row.discount_amount ?? row.discount) || 0,
+    subtotal: Number(row.subtotal) || 0,
+    shipping: Number(row.shipping) || 0,
+    tax: Number(row.tax) || 0,
+    currency: row.currency || "USD",
+    orderedAt: row.ordered_at || row.created_at,
+    createdAt: row.created_at
+  };
+}
+
+function summarizeAdminData(orders = [], events = []) {
+  const paidOrders = orders.filter((order) => ["已付款", "制作中", "已发货", "已完成"].includes(order.order_status || order.status));
+  const refundedOrders = orders.filter((order) => ["退款中", "已退款"].includes(order.order_status || order.status));
+  const salesAmount = paidOrders.reduce((sum, order) => sum + toNumber(order.order_amount ?? order.total), 0);
+  const totalCarat = paidOrders.reduce((sum, order) => {
+    const items = Array.isArray(order.items) ? order.items : [];
+    return sum + items.reduce((itemSum, item) => itemSum + toNumber(item.specs?.carat || item.carat) * toNumber(item.quantity, 1), 0);
+  }, 0);
+  const productSales = new Map();
+  paidOrders.forEach((order) => {
+    (Array.isArray(order.items) ? order.items : []).forEach((item) => {
+      const key = item.productId || item.sku || item.title || "未知商品";
+      const current = productSales.get(key) || { productId: key, title: item.title || key, quantity: 0, amount: 0 };
+      current.quantity += toNumber(item.quantity, 1);
+      current.amount += toNumber(item.lineTotal || item.unitPrice);
+      productSales.set(key, current);
+    });
+  });
+  const eventCount = (type) => events.filter((event) => event.event_type === type).length;
+  const pageCounts = new Map();
+  events.filter((event) => event.event_type === "page_view").forEach((event) => {
+    const key = event.page_path || "/";
+    pageCounts.set(key, (pageCounts.get(key) || 0) + 1);
+  });
+  return {
+    orders: {
+      total: orders.length,
+      paid: paidOrders.length,
+      salesAmount,
+      totalCarat,
+      averageOrderValue: paidOrders.length ? salesAmount / paidOrders.length : 0,
+      refundRate: orders.length ? refundedOrders.length / orders.length : 0,
+      topProducts: Array.from(productSales.values()).sort((a, b) => b.quantity - a.quantity).slice(0, 8)
+    },
+    traffic: {
+      pageViews: eventCount("page_view"),
+      productViews: eventCount("product_view"),
+      addToCart: eventCount("add_to_cart"),
+      checkoutStarts: eventCount("checkout_start"),
+      paypalStarts: eventCount("paypal_start"),
+      paypalPaid: eventCount("paypal_paid"),
+      topPages: Array.from(pageCounts.entries()).map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, 8)
+    }
+  };
+}
+
+async function sendResendEmail({ to, subject, html }) {
+  if (!resendApiKey || !to) return null;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ from: orderEmailFrom, to, subject, html })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.warn("Resend email failed:", payload?.message || payload?.error || response.statusText);
+    return null;
+  }
+  return payload;
+}
+
+async function notifyOrderCreated(order) {
+  const itemText = (order.items ?? []).map((item) => `${item.title} × ${item.quantity} · ${item.material || ""} · ${item.size || ""} · ${moneyValue(item.lineTotal)}`).join("<br/>");
+  const address = order.shipping_address ?? {};
+  const addressText = [address.firstName, address.lastName, address.addressLine1, address.addressLine2, address.city, address.state, address.postalCode, address.country].filter(Boolean).join(", ");
+  await Promise.allSettled([
+    sendResendEmail({
+      to: order.customer_email,
+      subject: `everastone 订单已创建：${order.order_number}`,
+      html: `<h2>订单已创建</h2><p>订单号：${order.order_number}</p><p>${itemText}</p><p>收货地址：${addressText}</p><p>商品小计：${order.currency} ${moneyValue(order.subtotal)}</p><p>首单优惠：-${order.currency} ${moneyValue(order.discount_amount)}</p><p>订单金额：${order.currency} ${moneyValue(order.order_amount)}</p><p>当前状态：${order.order_status}</p>`
+    }),
+    adminEmail ? sendResendEmail({
+      to: adminEmail,
+      subject: `新订单提醒：${order.order_number}`,
+      html: `<h2>收到新订单</h2><p>客户邮箱：${order.customer_email}</p><p>${itemText}</p><p>订单金额：${order.currency} ${order.order_amount}</p>`
+    }) : null
+  ]);
+}
+
+async function notifyPaymentPaid(order) {
+  await Promise.allSettled([
+    sendResendEmail({
+      to: order.customer_email,
+      subject: `everastone 付款成功：${order.order_number}`,
+      html: `<h2>付款成功</h2><p>订单号：${order.order_number}</p><p>支付方式：PayPal</p><p>实付金额：${order.currency} ${moneyValue(order.order_amount)}</p><p>订单状态：${order.order_status}</p><p>我们将开始安排制作，标准制作约 15 天，全球空运配送 3-6 天。</p>`
+    }),
+    adminEmail ? sendResendEmail({
+      to: adminEmail,
+      subject: `PayPal 付款成功：${order.order_number}`,
+      html: `<h2>订单已付款</h2><p>客户邮箱：${order.customer_email}</p><p>订单金额：${order.currency} ${moneyValue(order.order_amount)}</p><p>请进入后台确认制作排期。</p>`
+    }) : null
+  ]);
+}
+
+function buildOrderFromRequest(body = {}, overrides = {}) {
+  const items = Array.isArray(body.items) ? body.items.map(normalizeOrderItem) : [];
+  if (!items.length) {
+    const error = new Error("订单至少需要一个商品");
+    error.status = 422;
+    throw error;
+  }
+  const email = cleanText(body.email || body.customerEmail);
+  if (!email || !email.includes("@")) {
+    const error = new Error("请填写有效的用户邮箱");
+    error.status = 422;
+    throw error;
+  }
+  const subtotal = toNumber(body.subtotal, items.reduce((sum, item) => sum + item.lineTotal, 0));
+  const discount = toNumber(body.discount ?? body.discountAmount, Math.round(subtotal * 0.1 * 100) / 100);
+  const shipping = toNumber(body.shipping);
+  const tax = toNumber(body.tax);
+  const total = toNumber(body.total ?? body.orderAmount, subtotal - discount + shipping + tax);
+  const orderNumber = overrides.orderNumber || `ET-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${nanoid(6).toUpperCase()}`;
+  return {
+    id: orderNumber,
+    order_number: orderNumber,
+    customer_email: email,
+    status: overrides.orderStatus || "待付款",
+    order_status: overrides.orderStatus || "待付款",
+    payment_status: overrides.paymentStatus || "待付款",
+    currency: "USD",
+    subtotal,
+    discount,
+    discount_amount: discount,
+    shipping,
+    tax,
+    total,
+    order_amount: total,
+    shipping_address: body.address || {},
+    items,
+    product_info: items.map(({ productId, sku, title, image, quantity, unitPrice, lineTotal }) => ({ productId, sku, title, image, quantity, unitPrice, lineTotal })),
+    product_specs: items.map(({ productId, specs, material, size }) => ({ productId, specs, material, size })),
+    ring_size: items.map((item) => item.size).filter(Boolean).join(" / "),
+    payment_provider: overrides.paymentProvider || null,
+    payment_intent_id: overrides.paymentIntentId || null,
+    ordered_at: new Date().toISOString()
+  };
+}
+
+function assertPayPalConfigured() {
+  if (!paypalClientId || !paypalClientSecret) {
+    const error = new Error("PayPal 未配置完整，请在后端环境变量填写 PAYPAL_CLIENT_ID 和 PAYPAL_CLIENT_SECRET");
+    error.status = 503;
+    throw error;
+  }
+}
+
+async function getPayPalAccessToken() {
+  assertPayPalConfigured();
+  const credentials = Buffer.from(`${paypalClientId}:${paypalClientSecret}`).toString("base64");
+  const response = await fetch(`${paypalApiBase}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.error_description || payload?.message || "PayPal 授权失败");
+    error.status = response.status;
+    throw error;
+  }
+  return payload.access_token;
+}
+
+async function paypalRequest(path, { method = "POST", body } = {}) {
+  const accessToken = await getPayPalAccessToken();
+  const response = await fetch(`${paypalApiBase}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "PayPal-Request-Id": `ET-${Date.now()}-${nanoid(8)}`
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.message || payload?.details?.[0]?.description || "PayPal 请求失败");
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function verifyPayPalWebhook(req) {
+  if (!paypalWebhookId) return false;
+  const verification = await paypalRequest("/v1/notifications/verify-webhook-signature", {
+    body: {
+      auth_algo: req.get("paypal-auth-algo"),
+      cert_url: req.get("paypal-cert-url"),
+      transmission_id: req.get("paypal-transmission-id"),
+      transmission_sig: req.get("paypal-transmission-sig"),
+      transmission_time: req.get("paypal-transmission-time"),
+      webhook_id: paypalWebhookId,
+      webhook_event: req.body
+    }
+  });
+  return verification?.verification_status === "SUCCESS";
+}
+
+async function updateOrderById(id, patch) {
+  const rows = await supabaseRequest(`/orders?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    admin: true,
+    prefer: "return=representation",
+    body: patch
+  });
+  return rows[0];
+}
+
 function spamGuard(req, res, next) {
   if (req.body?.companyWebsite) {
     return res.status(422).json({ error: "Submission rejected." });
@@ -253,7 +535,7 @@ function requireAdminToken(req, res, next) {
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    service: "eternastone-commerce-api",
+    service: "everastone-commerce-api",
     supabase: Boolean(supabaseRestUrl && (supabaseAnonKey || supabaseServiceRoleKey))
   });
 });
@@ -261,7 +543,7 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/products", async (_req, res, next) => {
   try {
     const rows = await supabaseRequest("/products?select=*&order=created_at.desc", { admin: false });
-    res.json({ data: rows.map(rowToProduct) });
+    res.json({ data: rows.filter((row) => allowedShapes.has(row.shape)).map(rowToProduct) });
   } catch (error) {
     next(error);
   }
@@ -315,36 +597,191 @@ app.post("/api/uploads/product-image", spamGuard, requireAdminToken, async (req,
 
 app.post("/api/orders", spamGuard, async (req, res, next) => {
   try {
-    const body = req.body || {};
-    const items = Array.isArray(body.items) ? body.items : [];
-    if (!items.length) return res.status(422).json({ error: "订单至少需要一个商品" });
-    const order = {
-      id: `ET-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${nanoid(6).toUpperCase()}`,
-      customer_email: cleanText(body.email),
-      status: "pending_payment",
-      currency: "USD",
-      subtotal: toNumber(body.subtotal),
-      discount: toNumber(body.discount),
-      shipping: toNumber(body.shipping),
-      tax: toNumber(body.tax),
-      total: toNumber(body.total),
-      shipping_address: body.address || {},
-      items: items.map((item) => ({
-        productId: cleanText(item.productId || item.id),
-        title: cleanText(item.title),
-        material: cleanText(item.material || item.metal),
-        size: cleanText(item.size),
-        quantity: Math.max(1, Math.round(toNumber(item.quantity || item.qty, 1))),
-        unitPrice: toNumber(item.unitPrice || item.price)
-      }))
-    };
+    const order = buildOrderFromRequest(req.body || {});
     const rows = await supabaseRequest("/orders", {
       method: "POST",
       admin: true,
       prefer: "return=representation",
       body: order
     });
-    res.status(201).json({ data: rows[0] });
+    const savedOrder = rows[0];
+    notifyOrderCreated(savedOrder).catch((error) => console.warn("Order email notification failed:", error.message));
+    res.status(201).json({ data: rowToOrder(savedOrder) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/paypal/create-order", spamGuard, async (req, res, next) => {
+  try {
+    const order = buildOrderFromRequest(req.body || {}, { paymentProvider: "PayPal" });
+    const paypalOrder = await paypalRequest("/v2/checkout/orders", {
+      body: {
+        intent: "CAPTURE",
+        purchase_units: [
+          {
+            reference_id: order.id,
+            invoice_id: order.id,
+            custom_id: order.id,
+            description: `everastone订单 ${order.id}`,
+            amount: {
+              currency_code: order.currency,
+              value: moneyValue(order.order_amount),
+              breakdown: {
+                item_total: { currency_code: order.currency, value: moneyValue(order.subtotal) },
+                discount: { currency_code: order.currency, value: moneyValue(order.discount_amount) },
+                shipping: { currency_code: order.currency, value: moneyValue(order.shipping) },
+                tax_total: { currency_code: order.currency, value: moneyValue(order.tax) }
+              }
+            }
+          }
+        ]
+      }
+    });
+    const rows = await supabaseRequest("/orders", {
+      method: "POST",
+      admin: true,
+      prefer: "return=representation",
+      body: { ...order, payment_intent_id: paypalOrder.id }
+    });
+    res.status(201).json({ data: { paypalOrderId: paypalOrder.id, order: rowToOrder(rows[0]) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/paypal/capture-order", spamGuard, async (req, res, next) => {
+  try {
+    const paypalOrderId = cleanText(req.body?.paypalOrderId);
+    const localOrderId = cleanText(req.body?.localOrderId);
+    if (!paypalOrderId || !localOrderId) return res.status(422).json({ error: "缺少 PayPal 订单号或本地订单号" });
+    const capture = await paypalRequest(`/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`, { method: "POST" });
+    const captureId = capture?.purchase_units?.[0]?.payments?.captures?.[0]?.id || paypalOrderId;
+    const isCompleted = capture?.status === "COMPLETED";
+    const savedOrder = await updateOrderById(localOrderId, {
+      payment_provider: "PayPal",
+      payment_intent_id: captureId,
+      payment_status: isCompleted ? "已付款" : "待付款",
+      order_status: isCompleted ? "已付款" : "待付款",
+      status: isCompleted ? "已付款" : "待付款",
+      paid_at: isCompleted ? new Date().toISOString() : null
+    });
+    if (isCompleted) notifyPaymentPaid(savedOrder).catch((error) => console.warn("Payment email notification failed:", error.message));
+    res.json({ data: { order: rowToOrder(savedOrder), paypal: { id: paypalOrderId, status: capture?.status, captureId } } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/paypal/webhook", async (req, res, next) => {
+  try {
+    const verified = await verifyPayPalWebhook(req);
+    if (!verified) return res.status(400).json({ error: "PayPal Webhook 验证失败" });
+    const eventType = req.body?.event_type;
+    const resource = req.body?.resource || {};
+    const relatedOrderId = resource?.supplementary_data?.related_ids?.order_id || resource?.custom_id || "";
+    if (eventType === "PAYMENT.CAPTURE.COMPLETED" && relatedOrderId) {
+      const rows = await supabaseRequest(`/orders?payment_intent_id=eq.${encodeURIComponent(relatedOrderId)}&select=*`, { admin: true });
+      const orderId = rows?.[0]?.id || resource?.invoice_id || resource?.custom_id;
+      if (orderId) {
+        const savedOrder = await updateOrderById(orderId, {
+          payment_provider: "PayPal",
+          payment_intent_id: resource.id || relatedOrderId,
+          payment_status: "已付款",
+          order_status: "已付款",
+          status: "已付款",
+          paid_at: new Date().toISOString()
+        });
+        notifyPaymentPaid(savedOrder).catch((error) => console.warn("Webhook payment email notification failed:", error.message));
+      }
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/orders", requireAdminToken, async (_req, res, next) => {
+  try {
+    const rows = await supabaseRequest("/orders?select=*&order=created_at.desc", { admin: true });
+    res.json({ data: rows.map(rowToOrder) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/orders/lookup", spamGuard, async (req, res, next) => {
+  try {
+    const email = cleanText(req.body?.email).toLowerCase();
+    if (!email || !email.includes("@")) return res.status(422).json({ error: "请填写有效的下单邮箱" });
+    const orderNumber = cleanText(req.body?.orderNumber);
+    const path = orderNumber
+      ? `/orders?customer_email=eq.${encodeURIComponent(email)}&order_number=eq.${encodeURIComponent(orderNumber)}&select=*&order=created_at.desc&limit=20`
+      : `/orders?customer_email=eq.${encodeURIComponent(email)}&select=*&order=created_at.desc&limit=20`;
+    const rows = await supabaseRequest(path, { admin: true });
+    res.json({ data: rows.map(rowToOrder) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/analytics/events", spamGuard, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const event = {
+      event_type: cleanText(body.eventType || body.event_type || "page_view", "page_view").slice(0, 80),
+      page_path: cleanText(body.pagePath || body.page_path || ""),
+      product_id: body.productId ? cleanText(body.productId) : null,
+      customer_email: body.email ? cleanText(body.email).toLowerCase() : null,
+      session_id: cleanText(body.sessionId || ""),
+      metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {}
+    };
+    await supabaseRequest("/analytics_events", {
+      method: "POST",
+      admin: true,
+      prefer: "return=minimal",
+      body: event
+    });
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/analytics/summary", requireAdminToken, async (_req, res, next) => {
+  try {
+    const [orders, events] = await Promise.all([
+      supabaseRequest("/orders?select=*&order=created_at.desc&limit=1000", { admin: true }),
+      supabaseRequest("/analytics_events?select=*&order=created_at.desc&limit=5000", { admin: true })
+    ]);
+    res.json({ data: summarizeAdminData(orders, events) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/orders/:id", spamGuard, requireAdminToken, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const patch = {};
+    if (body.orderStatus && allowedOrderStatuses.has(body.orderStatus)) {
+      patch.order_status = body.orderStatus;
+      patch.status = body.orderStatus;
+    }
+    if (body.paymentStatus && allowedPaymentStatuses.has(body.paymentStatus)) {
+      patch.payment_status = body.paymentStatus;
+      if (body.paymentStatus === "已付款") patch.paid_at = new Date().toISOString();
+    }
+    if (body.trackingNumber !== undefined) {
+      patch.tracking_number = cleanText(body.trackingNumber);
+      patch.logistics_no = cleanText(body.trackingNumber);
+    }
+    if (body.logisticsProvider !== undefined) patch.logistics_provider = cleanText(body.logisticsProvider);
+    if (body.logisticsUrl !== undefined) patch.logistics_url = cleanText(body.logisticsUrl);
+    if (body.note !== undefined) patch.note = cleanText(body.note);
+    if (!Object.keys(patch).length) return res.status(422).json({ error: "没有可更新的订单字段" });
+    const rows = [await updateOrderById(req.params.id, patch)];
+    res.json({ data: rowToOrder(rows[0]) });
   } catch (error) {
     next(error);
   }
@@ -356,5 +793,5 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Eternastone API listening on http://localhost:${port}`);
+  console.log(`everastone API listening on http://localhost:${port}`);
 });

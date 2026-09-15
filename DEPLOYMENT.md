@@ -1,4 +1,4 @@
-# Eternastone 珠宝上线部署清单
+# everastone上线部署清单
 
 推荐方案：Supabase 数据库/图片存储 + Render 后端 API + Vercel 前端。
 
@@ -9,7 +9,7 @@
 - Supabase Storage bucket：`product-images1`。
 - 一个 Render 账号，用来部署后端 API。
 - 一个 Vercel 账号，用来部署前端网站。
-- 一个正式域名，例如 `eternastone.com`。
+- 一个正式域名，例如 `everastone.com`。
 
 ## 2. 重要安全提醒
 
@@ -50,18 +50,24 @@ SUPABASE_URL=https://你的项目.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=你的 Supabase service role key
 SUPABASE_STORAGE_BUCKET=product-images1
 ADMIN_API_TOKEN=你自己生成的长随机管理员Token
+PAYPAL_CLIENT_ID=你的 PayPal Client ID
+PAYPAL_CLIENT_SECRET=你的 PayPal Secret
+PAYPAL_WEBHOOK_ID=你的 PayPal Webhook ID
+PAYPAL_MODE=sandbox
+RESEND_API_KEY=你的 Resend API Key，可先不填
+ORDER_EMAIL_FROM=everastone <orders@你的域名.com>
 ```
 
 部署成功后，Render 会给你一个后端地址，例如：
 
 ```text
-https://eternastone-api.onrender.com
+https://everastone-api.onrender.com
 ```
 
 检查：
 
 ```text
-https://eternastone-api.onrender.com/api/health
+https://everastone-api.onrender.com/api/health
 ```
 
 如果返回 `ok: true`，说明后端正常。
@@ -83,6 +89,7 @@ Vercel 环境变量：
 VITE_API_BASE_URL=https://你的 Render 后端地址/api
 VITE_SUPABASE_URL=https://你的项目.supabase.co
 VITE_SUPABASE_ANON_KEY=你的 Supabase anon public key
+VITE_PAYPAL_CLIENT_ID=你的 PayPal Client ID
 ```
 
 不要在 Vercel 前端环境变量中填写：
