@@ -25,7 +25,7 @@ function adminHeaders(extra = {}) {
 async function parseJsonResponse(response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "接口请求失败");
+    throw new Error(payload.error || "Request failed");
   }
   return payload;
 }
@@ -48,6 +48,30 @@ export async function saveStorefrontProduct(product) {
 
 export async function deleteStorefrontProduct(id) {
   const response = await fetch(`${apiBase}/products/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: adminHeaders()
+  });
+  return parseJsonResponse(response);
+}
+
+export async function fetchBlogPosts() {
+  const response = await fetch(`${apiBase}/blog-posts`);
+  const payload = await parseJsonResponse(response);
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+export async function saveBlogPostApi(post) {
+  const response = await fetch(`${apiBase}/blog-posts`, {
+    method: "POST",
+    headers: adminHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(post)
+  });
+  const payload = await parseJsonResponse(response);
+  return payload.data;
+}
+
+export async function deleteBlogPostApi(id) {
+  const response = await fetch(`${apiBase}/blog-posts/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: adminHeaders()
   });
@@ -141,7 +165,7 @@ export async function updateAdminOrder(id, patch) {
 
 async function supabaseAuthRequest(path, body) {
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase Auth 未配置，请先填写 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY");
+    throw new Error("Supabase Auth is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
   }
   const response = await fetch(`${supabaseUrl}/auth/v1${path}`, {
     method: "POST",
@@ -166,8 +190,33 @@ export function sendPasswordRecovery(email) {
   return supabaseAuthRequest("/recover", { email });
 }
 
+export function getGoogleSignInUrl(redirectTo) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase Auth is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+  }
+  const target = redirectTo || (typeof window !== "undefined" ? `${window.location.origin}/account` : "");
+  const params = new URLSearchParams({
+    provider: "google",
+    redirect_to: target
+  });
+  return `${supabaseUrl}/auth/v1/authorize?${params.toString()}`;
+}
+
+export async function fetchAuthUser(accessToken) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase Auth is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+  }
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  return parseJsonResponse(response);
+}
+
 export async function fetchMyOrders(accessToken) {
-  if (!supabaseUrl || !supabaseAnonKey) throw new Error("Supabase 未配置");
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error("Supabase is not configured.");
   const response = await fetch(`${supabaseUrl}/rest/v1/orders?select=*&order=created_at.desc`, {
     headers: {
       apikey: supabaseAnonKey,
@@ -179,7 +228,7 @@ export async function fetchMyOrders(accessToken) {
 }
 
 async function supabaseUserDataRequest(path, { method = "GET", body, accessToken, prefer } = {}) {
-  if (!supabaseUrl || !supabaseAnonKey) throw new Error("Supabase 未配置");
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error("Supabase is not configured.");
   const response = await fetch(`${supabaseUrl}/rest/v1${path}`, {
     method,
     headers: {

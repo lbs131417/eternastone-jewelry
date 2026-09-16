@@ -30,11 +30,17 @@ const paypalClientSecret = process.env.PAYPAL_CLIENT_SECRET || "";
 const paypalWebhookId = process.env.PAYPAL_WEBHOOK_ID || "";
 const paypalMode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase();
 const paypalApiBase = paypalMode === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+const siteUrl = (process.env.SITE_URL || "https://everastone.com").replace(/\/$/, "");
 
 const allowedShapes = new Set(["round", "emerald", "pear", "asscher", "princess", "oval", "heart", "marquise", "radiant"]);
-const allowedCategories = new Set(["engagement", "jewelry", "couple", "wedding"]);
+const allowedCategories = new Set(["engagement", "jewelry", "couple", "wedding", "designer"]);
 const allowedOrderStatuses = new Set(["待付款", "已付款", "制作中", "已发货", "已完成", "已取消", "退款中", "已退款"]);
 const allowedPaymentStatuses = new Set(["待付款", "已付款", "退款中", "已退款", "支付失败", "已取消"]);
+const defaultBlogPosts = [
+  { id: "blog-oval-engagement-ring-guide", slug: "oval-lab-grown-diamond-ring-guide", title: "How to Choose an Oval Lab-Grown Diamond Ring", metaTitle: "How to Choose an Oval Lab-Grown Diamond Ring | everastone", metaDescription: "A practical guide to choosing an oval lab-grown diamond engagement ring by carat, ratio, color, clarity, setting style, and everyday comfort.", subtitle: "A warm, practical guide to carat, ratio and everyday comfort.", cover: "Oval engagement rings feel elongated, soft and quietly romantic.", content: "Oval lab-grown diamonds are loved for their graceful shape and finger-flattering presence.", status: "published", updatedAt: "2026-09-16" },
+  { id: "blog-round-diamond-classic", slug: "round-diamond-classic-engagement-ring", title: "Why Round Diamonds Never Go Out of Style", metaTitle: "Why Round Lab-Grown Diamond Rings Never Go Out of Style | everastone", metaDescription: "Learn why round lab-grown diamond engagement rings remain a timeless choice for brilliance, symmetry, proposal sparkle, and long-lasting style.", subtitle: "The classic fire, symmetry and proposal-ready sparkle couples trust.", cover: "Round diamonds are timeless because their brilliance feels effortless.", content: "Round lab-grown diamonds are easy to style across solitaire, halo and pavé settings.", status: "published", updatedAt: "2026-09-16" },
+  { id: "blog-pear-diamond-romance", slug: "pear-diamond-romantic-engagement-ring", title: "The Romantic Shape of a Pear Diamond", metaTitle: "Pear Lab-Grown Diamond Engagement Ring Guide | everastone", metaDescription: "Explore pear-shaped lab-grown diamond rings, from romantic teardrop proportions to elegant settings that flatter the hand.", subtitle: "A teardrop silhouette with elegant movement and delicate emotion.", cover: "Pear diamonds bring a gentle, expressive line to engagement rings.", content: "Pear-shaped lab-grown diamonds balance softness and drama.", status: "published", updatedAt: "2026-09-16" }
+];
 
 function getSupabaseKey(admin = false) {
   return admin ? supabaseServiceRoleKey : supabaseServiceRoleKey || supabaseAnonKey;
@@ -44,7 +50,7 @@ function assertSupabaseConfigured(admin = false) {
   const key = getSupabaseKey(admin);
   if (!supabaseRestUrl || !key) {
     const missing = admin ? "SUPABASE_SERVICE_ROLE_KEY" : "VITE_SUPABASE_ANON_KEY";
-    const error = new Error(`Supabase 未配置完整，请检查 SUPABASE_URL 和 ${missing}`);
+    const error = new Error(`Supabase is not fully configured. Please check SUPABASE_URL and ${missing}.`);
     error.status = 503;
     throw error;
   }
@@ -101,6 +107,10 @@ function cleanText(value, fallback = "") {
   return String(value ?? fallback).trim().slice(0, 800);
 }
 
+function cleanLongText(value, fallback = "", limit = 20000) {
+  return String(value ?? fallback).trim().slice(0, limit);
+}
+
 function toNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -124,6 +134,90 @@ function normalizePurity(material = "", purity = "") {
   if (/^1[0-8]K$/.test(explicitPurity)) return explicitPurity;
   const materialPurity = String(material || "").toUpperCase().match(/1[0-8]K/);
   return materialPurity?.[0] || "18K";
+}
+
+function slugify(value = "") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function blogPathFromPost(post = {}) {
+  return `/blog/${post.slug || slugify(post.title) || post.id}`;
+}
+
+function xmlEscape(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function blogToRow(post = {}) {
+  const title = cleanText(post.title);
+  const slug = slugify(post.slug || title);
+  return {
+    id: cleanText(post.id || `blog-${nanoid(10)}`),
+    slug,
+    title,
+    meta_title: cleanText(post.metaTitle || `${title} | everastone Blog`),
+    meta_description: cleanText(post.metaDescription || post.subtitle || post.cover, "").slice(0, 320),
+    subtitle: cleanText(post.subtitle),
+    cover: cleanLongText(post.cover, "", 1200),
+    image: cleanLongText(post.image, "", 200000),
+    content: cleanLongText(post.content, "", 20000),
+    status: post.status === "draft" ? "draft" : "published",
+    updated_at: cleanText(post.updatedAt || new Date().toISOString().slice(0, 10))
+  };
+}
+
+function rowToBlogPost(row = {}) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    metaTitle: row.meta_title,
+    metaDescription: row.meta_description,
+    subtitle: row.subtitle,
+    cover: row.cover,
+    image: row.image,
+    content: row.content,
+    status: row.status || "published",
+    updatedAt: row.updated_at || row.updatedAt || row.modified_at || row.created_at
+  };
+}
+
+function buildSitemapXml(blogPosts = []) {
+  const staticUrls = [
+    { loc: "/", priority: "1.0", changefreq: "weekly" },
+    { loc: "/diamonds", priority: "0.9", changefreq: "weekly" },
+    { loc: "/couple-rings", priority: "0.8", changefreq: "monthly" },
+    { loc: "/designer-styles", priority: "0.8", changefreq: "monthly" },
+    { loc: "/custom-ring", priority: "0.8", changefreq: "monthly" },
+    { loc: "/brand-story", priority: "0.7", changefreq: "monthly" },
+    { loc: "/blog", priority: "0.7", changefreq: "weekly" }
+  ];
+  const blogUrls = blogPosts
+    .filter((post) => post.status !== "draft")
+    .map((post) => ({
+      loc: blogPathFromPost(post),
+      priority: "0.7",
+      changefreq: "monthly",
+      lastmod: String(post.updatedAt || new Date().toISOString().slice(0, 10)).slice(0, 10)
+    }));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${[...staticUrls, ...blogUrls].map((item) => `  <url>
+    <loc>${xmlEscape(`${siteUrl}${item.loc}`)}</loc>
+    ${item.lastmod ? `<lastmod>${xmlEscape(item.lastmod)}</lastmod>` : ""}
+    <changefreq>${item.changefreq}</changefreq>
+    <priority>${item.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`;
 }
 
 function productToRow(product = {}) {
@@ -179,6 +273,8 @@ function productToRow(product = {}) {
     status: cleanText(product.status, "上架"),
     description: cleanText(product.description, ""),
     image_caption: cleanText(product.imageCaption, ""),
+    image_alt: cleanText(product.name, `${sku} 商品`),
+    image_title: cleanText(product.imageTitle, ""),
     image_url: primaryImage,
     images: hasRichMedia ? { default: images, ...normalizedMaterialImages, videos: videoUrls } : images,
     variants,
@@ -236,6 +332,8 @@ function rowToProduct(row = {}) {
     status: row.status,
     description: row.description,
     imageCaption: row.image_caption,
+    imageAlt: row.image_alt || row.name,
+    imageTitle: row.image_title || "",
     image: fallbackImage,
     images: defaultImages.length ? defaultImages : fallbackImage ? [fallbackImage] : [],
     materialImages,
@@ -371,13 +469,13 @@ async function notifyOrderCreated(order) {
   await Promise.allSettled([
     sendResendEmail({
       to: order.customer_email,
-      subject: `everastone 订单已创建：${order.order_number}`,
-      html: `<h2>订单已创建</h2><p>订单号：${order.order_number}</p><p>${itemText}</p><p>收货地址：${addressText}</p><p>商品小计：${order.currency} ${moneyValue(order.subtotal)}</p><p>首单优惠：-${order.currency} ${moneyValue(order.discount_amount)}</p><p>订单金额：${order.currency} ${moneyValue(order.order_amount)}</p><p>当前状态：${order.order_status}</p>`
+      subject: `Everastone order created: ${order.order_number}`,
+      html: `<h2>Your order has been created</h2><p>Order No.: ${order.order_number}</p><p>${itemText}</p><p>Shipping address: ${addressText}</p><p>Subtotal: ${order.currency} ${moneyValue(order.subtotal)}</p><p>First-order offer: -${order.currency} ${moneyValue(order.discount_amount)}</p><p>Order total: ${order.currency} ${moneyValue(order.order_amount)}</p><p>Status: ${order.order_status}</p>`
     }),
     adminEmail ? sendResendEmail({
       to: adminEmail,
-      subject: `新订单提醒：${order.order_number}`,
-      html: `<h2>收到新订单</h2><p>客户邮箱：${order.customer_email}</p><p>${itemText}</p><p>订单金额：${order.currency} ${order.order_amount}</p>`
+      subject: `New order received: ${order.order_number}`,
+      html: `<h2>New order received</h2><p>Customer email: ${order.customer_email}</p><p>${itemText}</p><p>Order total: ${order.currency} ${order.order_amount}</p>`
     }) : null
   ]);
 }
@@ -386,13 +484,13 @@ async function notifyPaymentPaid(order) {
   await Promise.allSettled([
     sendResendEmail({
       to: order.customer_email,
-      subject: `everastone 付款成功：${order.order_number}`,
-      html: `<h2>付款成功</h2><p>订单号：${order.order_number}</p><p>支付方式：PayPal</p><p>实付金额：${order.currency} ${moneyValue(order.order_amount)}</p><p>订单状态：${order.order_status}</p><p>我们将开始安排制作，标准制作约 15 天，全球空运配送 3-6 天。</p>`
+      subject: `Everastone payment received: ${order.order_number}`,
+      html: `<h2>Payment received</h2><p>Order No.: ${order.order_number}</p><p>Payment method: PayPal</p><p>Paid amount: ${order.currency} ${moneyValue(order.order_amount)}</p><p>Order status: ${order.order_status}</p><p>We will begin arranging production. Standard crafting takes about 15 days, followed by 3-6 days for international air delivery.</p>`
     }),
     adminEmail ? sendResendEmail({
       to: adminEmail,
-      subject: `PayPal 付款成功：${order.order_number}`,
-      html: `<h2>订单已付款</h2><p>客户邮箱：${order.customer_email}</p><p>订单金额：${order.currency} ${moneyValue(order.order_amount)}</p><p>请进入后台确认制作排期。</p>`
+      subject: `PayPal payment received: ${order.order_number}`,
+      html: `<h2>Order paid</h2><p>Customer email: ${order.customer_email}</p><p>Order total: ${order.currency} ${moneyValue(order.order_amount)}</p><p>Please confirm the production schedule in the admin dashboard.</p>`
     }) : null
   ]);
 }
@@ -400,13 +498,13 @@ async function notifyPaymentPaid(order) {
 function buildOrderFromRequest(body = {}, overrides = {}) {
   const items = Array.isArray(body.items) ? body.items.map(normalizeOrderItem) : [];
   if (!items.length) {
-    const error = new Error("订单至少需要一个商品");
+    const error = new Error("At least one item is required to place an order.");
     error.status = 422;
     throw error;
   }
   const email = cleanText(body.email || body.customerEmail);
   if (!email || !email.includes("@")) {
-    const error = new Error("请填写有效的用户邮箱");
+    const error = new Error("Please enter a valid customer email.");
     error.status = 422;
     throw error;
   }
@@ -444,7 +542,7 @@ function buildOrderFromRequest(body = {}, overrides = {}) {
 
 function assertPayPalConfigured() {
   if (!paypalClientId || !paypalClientSecret) {
-    const error = new Error("PayPal 未配置完整，请在后端环境变量填写 PAYPAL_CLIENT_ID 和 PAYPAL_CLIENT_SECRET");
+    const error = new Error("PayPal is not fully configured. Please add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to the backend environment variables.");
     error.status = 503;
     throw error;
   }
@@ -463,7 +561,7 @@ async function getPayPalAccessToken() {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload?.error_description || payload?.message || "PayPal 授权失败");
+    const error = new Error(payload?.error_description || payload?.message || "PayPal authorization failed.");
     error.status = response.status;
     throw error;
   }
@@ -483,7 +581,7 @@ async function paypalRequest(path, { method = "POST", body } = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload?.message || payload?.details?.[0]?.description || "PayPal 请求失败");
+    const error = new Error(payload?.message || payload?.details?.[0]?.description || "PayPal request failed.");
     error.status = response.status;
     throw error;
   }
@@ -527,7 +625,7 @@ function requireAdminToken(req, res, next) {
   if (!adminApiToken) return next();
   const token = req.get("x-admin-token") || "";
   if (token !== adminApiToken) {
-    return res.status(401).json({ error: "后台操作未授权，请填写正确的管理员 Token。" });
+    return res.status(401).json({ error: "Admin action is not authorized. Please enter the correct admin token." });
   }
   return next();
 }
@@ -538,6 +636,17 @@ app.get("/api/health", (_req, res) => {
     service: "everastone-commerce-api",
     supabase: Boolean(supabaseRestUrl && (supabaseAnonKey || supabaseServiceRoleKey))
   });
+});
+
+app.get("/sitemap.xml", async (_req, res) => {
+  let posts = defaultBlogPosts;
+  try {
+    const rows = await supabaseRequest("/blog_posts?status=eq.published&select=*&order=updated_at.desc", { admin: false });
+    if (Array.isArray(rows) && rows.length) posts = rows.map(rowToBlogPost);
+  } catch (error) {
+    console.warn("Dynamic sitemap fell back to default blog posts:", error.message);
+  }
+  res.type("application/xml").send(buildSitemapXml(posts));
 });
 
 app.get("/api/products", async (_req, res, next) => {
@@ -577,12 +686,51 @@ app.delete("/api/products/:id", requireAdminToken, async (req, res, next) => {
   }
 });
 
+app.get("/api/blog-posts", async (_req, res) => {
+  try {
+    const rows = await supabaseRequest("/blog_posts?select=*&order=updated_at.desc", { admin: false });
+    res.json({ data: rows.map(rowToBlogPost) });
+  } catch (error) {
+    console.warn("Blog API fell back to default posts:", error.message);
+    res.json({ data: defaultBlogPosts });
+  }
+});
+
+app.post("/api/blog-posts", spamGuard, requireAdminToken, async (req, res, next) => {
+  try {
+    const row = blogToRow(req.body);
+    if (!row.title || !row.slug) return res.status(422).json({ error: "Please enter the blog title and SEO URL slug." });
+    const rows = await supabaseRequest("/blog_posts", {
+      method: "POST",
+      admin: true,
+      prefer: "resolution=merge-duplicates,return=representation",
+      body: row
+    });
+    res.status(201).json({ data: rowToBlogPost(rows[0]) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/blog-posts/:id", requireAdminToken, async (req, res, next) => {
+  try {
+    await supabaseRequest(`/blog_posts?id=eq.${encodeURIComponent(req.params.id)}`, {
+      method: "DELETE",
+      admin: true,
+      prefer: "return=minimal"
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/uploads/product-image", spamGuard, requireAdminToken, async (req, res, next) => {
   try {
     const body = req.body || {};
     const dataUrl = String(body.dataUrl || "");
     const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) return res.status(422).json({ error: "图片数据格式不正确" });
+    if (!match) return res.status(422).json({ error: "Invalid image data format." });
     const contentType = cleanText(body.contentType || match[1], "image/jpeg");
     const extension = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : contentType.includes("gif") ? "gif" : "jpg";
     const sku = cleanText(body.sku || "product").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
@@ -623,7 +771,7 @@ app.post("/api/paypal/create-order", spamGuard, async (req, res, next) => {
             reference_id: order.id,
             invoice_id: order.id,
             custom_id: order.id,
-            description: `everastone订单 ${order.id}`,
+            description: `Everastone order ${order.id}`,
             amount: {
               currency_code: order.currency,
               value: moneyValue(order.order_amount),
@@ -654,7 +802,7 @@ app.post("/api/paypal/capture-order", spamGuard, async (req, res, next) => {
   try {
     const paypalOrderId = cleanText(req.body?.paypalOrderId);
     const localOrderId = cleanText(req.body?.localOrderId);
-    if (!paypalOrderId || !localOrderId) return res.status(422).json({ error: "缺少 PayPal 订单号或本地订单号" });
+    if (!paypalOrderId || !localOrderId) return res.status(422).json({ error: "Missing PayPal order ID or local order ID." });
     const capture = await paypalRequest(`/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`, { method: "POST" });
     const captureId = capture?.purchase_units?.[0]?.payments?.captures?.[0]?.id || paypalOrderId;
     const isCompleted = capture?.status === "COMPLETED";
@@ -676,7 +824,7 @@ app.post("/api/paypal/capture-order", spamGuard, async (req, res, next) => {
 app.post("/api/paypal/webhook", async (req, res, next) => {
   try {
     const verified = await verifyPayPalWebhook(req);
-    if (!verified) return res.status(400).json({ error: "PayPal Webhook 验证失败" });
+    if (!verified) return res.status(400).json({ error: "PayPal webhook verification failed." });
     const eventType = req.body?.event_type;
     const resource = req.body?.resource || {};
     const relatedOrderId = resource?.supplementary_data?.related_ids?.order_id || resource?.custom_id || "";
@@ -713,7 +861,7 @@ app.get("/api/orders", requireAdminToken, async (_req, res, next) => {
 app.post("/api/orders/lookup", spamGuard, async (req, res, next) => {
   try {
     const email = cleanText(req.body?.email).toLowerCase();
-    if (!email || !email.includes("@")) return res.status(422).json({ error: "请填写有效的下单邮箱" });
+    if (!email || !email.includes("@")) return res.status(422).json({ error: "Please enter a valid checkout email." });
     const orderNumber = cleanText(req.body?.orderNumber);
     const path = orderNumber
       ? `/orders?customer_email=eq.${encodeURIComponent(email)}&order_number=eq.${encodeURIComponent(orderNumber)}&select=*&order=created_at.desc&limit=20`
@@ -779,7 +927,7 @@ app.patch("/api/orders/:id", spamGuard, requireAdminToken, async (req, res, next
     if (body.logisticsProvider !== undefined) patch.logistics_provider = cleanText(body.logisticsProvider);
     if (body.logisticsUrl !== undefined) patch.logistics_url = cleanText(body.logisticsUrl);
     if (body.note !== undefined) patch.note = cleanText(body.note);
-    if (!Object.keys(patch).length) return res.status(422).json({ error: "没有可更新的订单字段" });
+    if (!Object.keys(patch).length) return res.status(422).json({ error: "No order fields are available to update." });
     const rows = [await updateOrderById(req.params.id, patch)];
     res.json({ data: rowToOrder(rows[0]) });
   } catch (error) {

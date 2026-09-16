@@ -3,7 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.products (
   id text primary key,
   sku text not null unique,
-  category text not null check (category in ('engagement', 'jewelry', 'couple', 'wedding')),
+  category text not null check (category in ('engagement', 'jewelry', 'couple', 'wedding', 'designer')),
   name text not null,
   price numeric(12, 2) not null default 0,
   stock integer not null default 0,
@@ -25,6 +25,8 @@ create table if not exists public.products (
   status text not null default '上架',
   description text not null default '',
   image_caption text not null default '',
+  image_alt text not null default '',
+  image_title text not null default '',
   image_url text not null default '',
   images jsonb not null default '[]'::jsonb,
   variants jsonb not null default '[]'::jsonb,
@@ -38,6 +40,28 @@ create table if not exists public.products (
 create index if not exists products_category_status_idx on public.products (category, status);
 create index if not exists products_shape_price_idx on public.products (shape, price);
 create index if not exists products_created_at_idx on public.products (created_at desc);
+
+alter table public.products add column if not exists image_alt text not null default '';
+alter table public.products add column if not exists image_title text not null default '';
+
+create table if not exists public.blog_posts (
+  id text primary key,
+  slug text not null unique,
+  title text not null,
+  meta_title text not null default '',
+  meta_description text not null default '',
+  subtitle text not null default '',
+  cover text not null default '',
+  image text not null default '',
+  content text not null default '',
+  status text not null default 'published' check (status in ('published', 'draft')),
+  updated_at date not null default current_date,
+  created_at timestamptz not null default now(),
+  modified_at timestamptz not null default now()
+);
+
+create index if not exists blog_posts_status_updated_idx on public.blog_posts (status, updated_at desc);
+create index if not exists blog_posts_slug_idx on public.blog_posts (slug);
 
 create table if not exists public.orders (
   id text primary key,
@@ -165,7 +189,13 @@ create trigger orders_set_updated_at
 before update on public.orders
 for each row execute function public.set_updated_at();
 
+drop trigger if exists blog_posts_set_modified_at on public.blog_posts;
+create trigger blog_posts_set_modified_at
+before update on public.blog_posts
+for each row execute function public.set_updated_at();
+
 alter table public.products enable row level security;
+alter table public.blog_posts enable row level security;
 alter table public.orders enable row level security;
 alter table public.profiles enable row level security;
 alter table public.favorite_products enable row level security;
@@ -182,6 +212,21 @@ using (status = '上架');
 drop policy if exists "Service role can manage products" on public.products;
 create policy "Service role can manage products"
 on public.products
+for all
+to service_role
+using (true)
+with check (true);
+
+drop policy if exists "Public can read published blog posts" on public.blog_posts;
+create policy "Public can read published blog posts"
+on public.blog_posts
+for select
+to anon, authenticated
+using (status = 'published');
+
+drop policy if exists "Service role can manage blog posts" on public.blog_posts;
+create policy "Service role can manage blog posts"
+on public.blog_posts
 for all
 to service_role
 using (true)

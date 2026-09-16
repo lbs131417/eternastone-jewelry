@@ -48,7 +48,7 @@ export const categories = [
 export const colors = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
 export const clarities = ["FL", "IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", "I1"];
 export const grades = ["Excellent", "Very Good", "Good", "Fair", "Poor"];
-export const certificates = ["GIA", "IGI", "HRD", "GCAL", "无证书"];
+export const certificates = ["GIA", "IGI", "HRD", "GCAL", "No Certificate"];
 export const fluorescence = ["None", "Faint", "Medium", "Strong", "Very Strong"];
 
 export const diamonds = [

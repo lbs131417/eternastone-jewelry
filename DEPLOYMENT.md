@@ -46,6 +46,7 @@ Render 环境变量：
 ```env
 PORT=4000
 CORS_ORIGIN=https://你的前端正式域名
+SITE_URL=https://你的前端正式域名
 SUPABASE_URL=https://你的项目.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=你的 Supabase service role key
 SUPABASE_STORAGE_BUCKET=product-images1
