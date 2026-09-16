@@ -40,6 +40,7 @@ import {
   ukSizes,
   usSizes
 } from "./data.js";
+import everastoneLogoMark from "./assets/everastone-logo-mark.png";
 
 const money = (value) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
@@ -50,6 +51,8 @@ const formatArrivalDate = (days = 23) => {
 };
 
 const FRONTEND_PRODUCTS_STORAGE_KEY = "everastone.frontend.products";
+const FRONTEND_PRODUCTS_CACHE_VERSION_KEY = "everastone.frontend.products.cacheVersion";
+const FRONTEND_PRODUCTS_CACHE_VERSION = "empty-seed-2026-09-17";
 const CUSTOMER_SESSION_STORAGE_KEY = "everastone.customer.session";
 const CUSTOMER_PROFILES_STORAGE_KEY = "everastone.customer.profiles";
 const ANALYTICS_SESSION_STORAGE_KEY = "everastone.analytics.sessionId";
@@ -105,6 +108,12 @@ const defaultBlogPosts = [
 ];
 const readSharedFrontendProducts = () => {
   try {
+    const version = window.localStorage.getItem(FRONTEND_PRODUCTS_CACHE_VERSION_KEY);
+    if (version !== FRONTEND_PRODUCTS_CACHE_VERSION) {
+      window.localStorage.removeItem(FRONTEND_PRODUCTS_STORAGE_KEY);
+      window.localStorage.setItem(FRONTEND_PRODUCTS_CACHE_VERSION_KEY, FRONTEND_PRODUCTS_CACHE_VERSION);
+      return [];
+    }
     const stored = window.localStorage.getItem(FRONTEND_PRODUCTS_STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
   } catch {
@@ -147,7 +156,7 @@ const blogPathFromPost = (post = {}) => `/blog/${post.slug || slugify(post.title
 const buildBlogSitemapXml = (posts = []) => `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${posts.filter((post) => post.status !== "draft").map((post) => `  <url>
-    <loc>https://everastone.com${blogPathFromPost(post)}</loc>
+    <loc>https://www.everastone.com${blogPathFromPost(post)}</loc>
     <lastmod>${post.updatedAt || new Date().toISOString().slice(0, 10)}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -274,6 +283,14 @@ const getMaterialImageGroup = (material = "") => {
   return materialImageGroups.find((group) => group.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())))?.key ?? "whiteGold";
 };
 const getMainMaterial = (material = "") => materialImageGroups.find((group) => group.key === getMaterialImageGroup(material))?.label ?? "Platinum";
+const getMaterialShortLabel = (materialOrGroup = "") => ({
+  yellowGold: "YG",
+  whiteGold: "PT",
+  roseGold: "RG",
+  "Yellow Gold": "YG",
+  Platinum: "PT",
+  "Rose Gold": "RG"
+}[materialOrGroup] || materialOrGroup);
 const getMaterialPurity = (material = "", purity = "") => {
   const mainMaterial = getMainMaterial(material);
   if (mainMaterial === "Platinum") return "Platinum";
@@ -315,7 +332,33 @@ const getPrimaryProductImage = (product = {}) => {
   const firstMaterialImage = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).find(Boolean);
   return firstMaterialImage || product.images?.[0] || product.image || shapes.find((shape) => shape.key === product.shape)?.image;
 };
-const getProductImageAlt = (product = {}) => product.imageAlt || product.name || `${shapeLabel(product.shape)} lab-grown diamond jewelry`;
+const storefrontProductCategories = new Set(["engagement", "jewelry", "couple", "wedding", "designer"]);
+const getProductCategory = (product = {}) => {
+  if (storefrontProductCategories.has(product.category)) return product.category;
+  const identity = `${product.id ?? ""} ${product.sku ?? ""} ${product.name ?? ""} ${product.title ?? ""}`.toLowerCase();
+  if (/\b(cp|couple)[-_]/.test(identity) || identity.includes("matching") || identity.includes("couple") || identity.includes("对戒") || identity.includes("情侣")) return "couple";
+  if (/\b(ds|des|designer)[-_]/.test(identity) || identity.includes("designer") || identity.includes("设计师")) return "designer";
+  if (/\b(jw|jewelry)[-_]/.test(identity) || identity.includes("necklace") || identity.includes("earring") || identity.includes("bracelet") || identity.includes("项链") || identity.includes("耳") || identity.includes("手链")) return "jewelry";
+  if (/\b(wr|wedding)[-_]/.test(identity) || identity.includes("wedding band") || identity.includes("婚戒")) return "wedding";
+  return "engagement";
+};
+const containsChinese = (value = "") => /[\u3400-\u9fff]/.test(String(value));
+const getProductDisplayName = (product = {}) => {
+  const rawName = product.name || product.title || "";
+  if (rawName && !containsChinese(rawName)) return rawName;
+  const carat = Number(product.carat);
+  const caratText = Number.isFinite(carat) && carat > 0 ? `${carat.toFixed(2)} ct ` : "";
+  const shape = shapeLabel(product.shape);
+  const category = getProductCategory(product);
+  if (category === "couple") return `${shape} Lab-Grown Diamond Matching Rings`;
+  if (category === "jewelry") return `${shape} Lab-Grown Diamond Jewelry`;
+  if (category === "wedding") return `${caratText}${shape} Lab-Grown Diamond Wedding Ring`;
+  if (category === "designer") return `${caratText}${shape} Designer Lab-Grown Diamond Ring`;
+  return `${caratText}${shape} Lab-Grown Diamond Ring`;
+};
+const getProductImageAlt = (product = {}) => containsChinese(product.imageAlt)
+  ? getProductDisplayName(product)
+  : product.imageAlt || getProductDisplayName(product) || `${shapeLabel(product.shape)} lab-grown diamond jewelry`;
 const getProductImageTitle = (product = {}) => product.imageTitle || undefined;
 const orderedCatalogShapeKeys = ["oval", "round", "marquise", "emerald", "princess"];
 const catalogShapes = [
@@ -398,7 +441,9 @@ const contentPaths = {
   settingPave: "/collection/pave-settings",
   settingThreeStone: "/collection/three-stone-settings",
   settingVintage: "/collection/vintage-settings",
+  ringSizeGuide: "/ring-size-guide",
   shipping: "/shipping-policy",
+  payment: "/payment-terms",
   returns: "/returns-policy",
   warranty: "/warranty-policy",
   terms: "/terms-of-service",
@@ -534,7 +579,7 @@ const homeCopy = {
       zh: "未佩戴、符合条件商品，支持 30 天无忧退换",
       en: "Eligible unworn pieces support 30-day worry-free returns."
     },
-    email: { original: "support@everastone.com", zh: "客服邮箱：support@everastone.com", en: "Support: support@everastone.com" }
+    email: { original: "orders@everastone.com", zh: "客服邮箱：orders@everastone.com", en: "Support: orders@everastone.com" }
   }
 };
 
@@ -628,7 +673,7 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
       mega: [
         { title: "Diamond Shapes", items: [["Oval", "oval"], ["Round", "round"], ["Marquise", "marquise"], ["Emerald", "emerald"], ["Princess", "princess"], ["Pear", "pear"], ["Radiant", "radiant"]] },
         { title: "Popular Diamonds", items: [["2 ct Oval Center Stone", null, "popularOval"], ["1.5 ct Round Center Stone", null, "popularRound"], ["2.5 ct Pear Center Stone", null, "popularPear"], ["3 ct Emerald Center Stone", null, "popularEmerald"]] },
-        { title: "Setting Types", items: [["Solitaire", null, "settingSolitaire"], ["Halo", null, "settingHalo"], ["Pavé", null, "settingPave"], ["Three-Stone", null, "settingThreeStone"], ["Vintage", null, "settingVintage"]] }
+        { title: "Setting Types", items: [["Solitaire", null, "settingSolitaire"], ["Halo", null, "settingHalo"], ["Pavé", null, "settingPave"], ["Three-Stone", null, "settingThreeStone"], ["Vintage", null, "settingVintage"], ["Ring Size Guide", null, "ringSizeGuide"]] }
       ]
     },
     { key: "couple", label: "Matching", contentKey: "couple", mega: [{ title: "Ring Categories", items: [["Classic Bands", null, "coupleClassic"], ["Diamond Pairs", null, "coupleDiamond"], ["Minimal Slim Rings", null, "coupleMinimal"], ["Vintage Engraved Rings", null, "coupleVintage"]] }] },
@@ -674,9 +719,9 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
           <Menu size={22} />
         </button>
         <button className="brand" onClick={() => setPage("home")} aria-label="everastone Jewelry home">
-          <span className="brand-mark"><Diamond size={20} /></span>
+          <span className="brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" /></span>
           <span>
-            <strong>everastone</strong>
+            <strong>EVERASTONE</strong>
             <small>Lab-grown diamond atelier</small>
           </span>
         </button>
@@ -705,7 +750,7 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
                       <span className="nav-menu-section" key={section.title}>
                         <strong>{section.title}</strong>
                         {section.items.map(([menuItem, shape, contentKey]) => (
-                          <button className={shape ? "nav-shape-link" : ""} key={menuItem} onClick={() => openTarget(item.target, shape, contentKey)}>
+                          <button className={`${shape ? "nav-shape-link" : ""}${contentKey === "ringSizeGuide" ? " nav-emphasis-link" : ""}`} key={menuItem} onClick={() => openTarget(item.target, shape, contentKey)}>
                             {shape ? <ShapeIcon shape={shapes.find((shapeItem) => shapeItem.key === shape)} /> : null}
                             <span>{menuItem}</span>
                           </button>
@@ -732,8 +777,8 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
           <button className="mobile-drawer-scrim" aria-label="Close mobile menu" onClick={() => setMobileMenuOpen(false)} />
           <aside className="mobile-drawer" role="dialog" aria-modal="true" aria-label="Mobile navigation menu">
             <div className="mobile-drawer-brand">
-              <span className="brand-mark"><Diamond size={18} /></span>
-          <span><strong>everastone</strong><small>Lab-grown diamond atelier</small></span>
+              <span className="brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" /></span>
+          <span><strong>EVERASTONE</strong><small>Lab-grown diamond atelier</small></span>
               <button onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
             </div>
             <label className="mobile-search">
@@ -971,6 +1016,8 @@ function Home({ setPage, applyPreset }) {
           </article>
         ))}
       </section>
+
+      <FAQSection />
     </main>
   );
 }
@@ -981,6 +1028,7 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
 
   const filtered = useMemo(() => {
     const sorted = diamonds
+      .filter((diamond) => getProductCategory(diamond) === "engagement")
       .filter((diamond) => !filters.shape || diamond.shape === filters.shape)
       .filter((diamond) => diamond.carat >= filters.caratMin && diamond.carat <= filters.caratMax)
       .filter((diamond) => diamond.price >= filters.priceMin && diamond.price <= filters.priceMax)
@@ -1029,7 +1077,7 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
     <main className="catalog-page">
       <section className="catalog-top">
         <p className="eyebrow">LAB-GROWN DIAMONDS ONLY</p>
-        <h1>Bespoke Lab-Grown Diamond Engagement Rings</h1>
+        <h1>Capture the Heartbeat of Your Proposal</h1>
         <p>No mined diamonds, no mixed-source inventory — only traceable ethical lab-grown stones.</p>
       </section>
 
@@ -1178,7 +1226,7 @@ function ProductCard({ product, openProduct, addToCart }) {
       />
       <div>
         <span>{product.id}</span>
-        <h3>{product.name ?? `${Number(product.carat).toFixed(2)} ct ${shapeLabel(product.shape)}`}</h3>
+        <h3>{getProductDisplayName(product)}</h3>
         <p>{Number(product.carat).toFixed(2)} ct · {product.color} Color · {product.clarity} Clarity · {product.certificate}</p>
         <div className="card-price-row">
           <strong>{money(product.price)}</strong>
@@ -1204,7 +1252,7 @@ function ProductCard({ product, openProduct, addToCart }) {
               }
             }}
           >
-            {group.label}
+            {getMaterialShortLabel(group.key)}
           </span>
         ))}
       </div>
@@ -1213,6 +1261,21 @@ function ProductCard({ product, openProduct, addToCart }) {
 }
 
 function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
+  if (!product) {
+    return (
+      <main className="utility-page">
+        <p className="eyebrow">PRODUCT UNAVAILABLE</p>
+        <h1>This product is no longer available</h1>
+        <p className="content-intro">The storefront product list has been cleared. Please return to the catalog or upload a new product from the admin panel.</p>
+        <button className="primary-btn" onClick={() => setPage("diamonds")}>Back to Engagement Rings</button>
+      </main>
+    );
+  }
+
+  return <ProductDetailContent product={product} addToCart={addToCart} setPage={setPage} products={products} openProduct={openProduct} />;
+}
+
+function ProductDetailContent({ product, addToCart, setPage, products, openProduct }) {
   const defaultVariants = useMemo(() => {
     const baseCarat = Number(product?.carat) || 1.5;
     const basePrice = Number(product?.price) || 2800;
@@ -1305,10 +1368,10 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
     circumference: (46.5 + index * 1.25).toFixed(1)
   }));
   const recommendedProducts = (products ?? [])
-    .filter((item) => item.id !== product.id && item.category !== "couple" && item.category !== "jewelry")
+    .filter((item) => item.id !== product.id && !["couple", "jewelry", "designer"].includes(getProductCategory(item)))
     .sort((a, b) => Number(b.sold ?? 0) - Number(a.sold ?? 0))
     .slice(0, 4);
-  const showTryOn = !["couple", "jewelry"].includes(product.category);
+  const showTryOn = !["couple", "jewelry"].includes(getProductCategory(product));
   const variantFields = [
     ["carat", "Diamond Carat", "ct"],
     ["material", "Metal", ""],
@@ -1450,7 +1513,7 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
         </div>
         <div className="detail-info">
           <p className="eyebrow">CERTIFIED LAB-GROWN DIAMOND</p>
-          <h1>{product.name ?? `${product.carat.toFixed(2)} ct ${shapeLabel(product.shape)} Diamond Ring`}</h1>
+          <h1>{getProductDisplayName(product)}</h1>
           <p className="price">{money(displayPrice)}</p>
           <div className="first-order-offer">
             <span>First Order 10% Off</span>
@@ -1556,7 +1619,7 @@ function ProductDetail({ product, addToCart, setPage, products, openProduct }) {
             <button className="recommend-card" onClick={() => openProduct(item.id)} key={item.id}>
               <img src={item.image} alt={getProductImageAlt(item)} title={getProductImageTitle(item)} />
               <span>{shapeLabel(item.shape)} · {Number(item.carat).toFixed(2)}ct</span>
-              <strong>{item.name ?? `${shapeLabel(item.shape)} Lab-Grown Diamond Ring`}</strong>
+              <strong>{getProductDisplayName(item)}</strong>
               <em>{money(item.price)}</em>
             </button>
           ))}
@@ -1594,9 +1657,9 @@ function Cart({ cart, setCart, setPage }) {
         <section className="cart-list">
           {cart.length === 0 ? <p>Your bag is empty. Start by choosing a lab-grown diamond ring.</p> : cart.map((item) => (
             <article className="cart-item" key={item.cartId}>
-              <img src={item.image} alt={item.imageAlt || item.title} title={item.imageTitle || undefined} />
+              <img src={item.image} alt={containsChinese(item.imageAlt || item.title) ? getProductDisplayName(item) : item.imageAlt || item.title} title={item.imageTitle || undefined} />
               <div>
-                <h3>{item.title}</h3>
+                <h3>{getProductDisplayName(item)}</h3>
                 <p>{item.metal} · {item.size}</p>
                 <strong>{money(item.price)}</strong>
               </div>
@@ -1632,7 +1695,7 @@ function Cart({ cart, setCart, setPage }) {
   );
 }
 
-function Checkout({ cart, onSubmitOrder }) {
+function Checkout({ cart, onSubmitOrder, openContent }) {
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [paypalReady, setPaypalReady] = useState(false);
@@ -1650,6 +1713,7 @@ function Checkout({ cart, onSubmitOrder }) {
     postalCode: "",
     phone: ""
   });
+  const [policyAccepted, setPolicyAccepted] = useState(false);
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = Math.round(subtotal * 0.1 * 100) / 100;
   const tax = Math.round(subtotal * 0.075 * 100) / 100;
@@ -1671,6 +1735,7 @@ function Checkout({ cart, onSubmitOrder }) {
     if (!form.email || !form.email.includes("@") || !form.addressLine1 || !form.city || !form.postalCode) {
       return "Please fill in your email, street address, city and postal code.";
     }
+    if (!policyAccepted) return "Please review and accept the payment, service, return and privacy terms before checkout.";
     return "";
   };
   const buildCheckoutPayload = () => ({
@@ -1688,7 +1753,7 @@ function Checkout({ cart, onSubmitOrder }) {
     },
     items: cart.map((item) => ({
       productId: item.id,
-      title: item.title,
+      title: getProductDisplayName(item),
       image: item.image,
       material: item.metal,
       size: item.size,
@@ -1820,7 +1885,7 @@ function Checkout({ cart, onSubmitOrder }) {
       cancelled = true;
       if (paypalButtonsRef.current) paypalButtonsRef.current.innerHTML = "";
     };
-  }, [cart, form, subtotal, discount, tax, shipping, total]);
+  }, [cart, form, policyAccepted, subtotal, discount, tax, shipping, total]);
 
   return (
     <main className="utility-page">
@@ -1854,7 +1919,16 @@ function Checkout({ cart, onSubmitOrder }) {
             <p><span>Insured shipping</span><strong>{money(shipping)}</strong></p>
             <p className="summary-total"><span>Total</span><strong>{money(total)}</strong></p>
           </div>
-          <label className="check-row"><input type="checkbox" /> I agree to encrypted order processing and the privacy policy.</label>
+          <div className="check-row checkout-policy-consent">
+            <input type="checkbox" checked={policyAccepted} onChange={(event) => setPolicyAccepted(event.target.checked)} />
+            <span>
+              I agree to Everastone’s encrypted order processing,{" "}
+              <button type="button" className="inline-policy-link" onClick={() => openContent("payment")}>Payment Terms</button>,{" "}
+              <button type="button" className="inline-policy-link" onClick={() => openContent("terms")}>Terms of Service</button>,{" "}
+              <button type="button" className="inline-policy-link" onClick={() => openContent("returns")}>Return & Refund Policy</button>, and{" "}
+              <button type="button" className="inline-policy-link" onClick={() => openContent("privacy")}>Privacy Policy</button>.
+            </span>
+          </div>
           {import.meta.env.VITE_PAYPAL_CLIENT_ID ? (
             <div className={paypalReady ? "paypal-button-box ready" : "paypal-button-box"} ref={paypalButtonsRef} />
           ) : (
@@ -1870,16 +1944,16 @@ function Checkout({ cart, onSubmitOrder }) {
 
 const contentPages = {
   couple: {
-    eyebrow: "COUPLE RINGS",
-    title: "Matching Couple Wedding Rings",
-    intro: "Designed for daily wear between two people: balanced, comfortable and quietly meaningful.",
+    eyebrow: "COUPLE WEDDING RINGS",
+    title: "Paired Wedding Rings, Made to Hold Everyday Love",
+    intro: "Made for everyday companionship, gently comfortable on the hand, carrying the love and hopes that belong only to the two of you.",
     cards: [["Classic Bands", "Clean metal lines and a comfort-fit inner curve for everyday wear."], ["Diamond Pairs", "Subtle lab-grown diamond details with a low-key sense of ceremony."], ["Minimal Slim Rings", "Light profiles for couples who prefer refined restraint."], ["Vintage Engraved", "Engraved textures and romantic details with a story-led feel."]]
   },
   coupleClassic: { eyebrow: "CLASSIC BANDS", title: "Classic Wedding Bands", intro: "Clean metal lines and comfortable proportions for daily wear after the wedding.", cards: [["18K White Gold Band", "Cool-toned and minimal."], ["Platinum Classic Band", "Durable, steady and made for long-term wear."], ["Rose Gold Band", "Warm, soft and intimate."]] },
   coupleDiamond: { eyebrow: "DIAMOND PAIRS", title: "Diamond Matching Rings", intro: "Add subtle lab-grown diamond light without making the pair feel too ornate.", cards: [["Single Accent Diamond", "One small diamond as a shared mark."], ["Half Pavé Band", "More sparkle while staying refined."], ["Hidden Diamond Detail", "A private romantic detail inside or along the side."]] },
   coupleMinimal: { eyebrow: "MINIMAL SLIM", title: "Minimal Slim Matching Rings", intro: "Light widths and clean proportions for a modern couple's everyday style.", cards: [["Slim Plain Band", "Light on the hand and easy to stack."], ["Slim Diamond Accent", "A small flash of light with a clean profile."], ["Personal Engraving", "Add initials, dates or a short phrase."]] },
   coupleVintage: { eyebrow: "VINTAGE ENGRAVED", title: "Vintage Engraved Matching Rings", intro: "Engraving, milgrain edges and vintage proportions create a stronger sense of story.", cards: [["Wheat Motif", "A symbol of companionship and abundance."], ["Milgrain Details", "Classic vintage finishing."], ["Soft Aged Gold Feel", "Warm metal light without feeling loud."]] },
-  designer: { eyebrow: "DESIGNER EDITION", title: "Designer Edition Lab-Grown Diamond Rings", intro: "Original designer pieces with a distinctive visual language, ready to view in detail or purchase directly.", cards: [] },
+  designer: { eyebrow: "DESIGNER LIMITED EDITION", title: "Love of a Lifetime", intro: "This season’s Love of a Lifetime theme uses black-and-gold contrast to amplify each diamond’s brilliant fire, while a touch of red casts the tender romance of a proposal.", cards: [] },
   custom: { eyebrow: "BESPOKE RINGS", title: "Build Your Custom Bespoke Diamond Ring", intro: "From center-stone selection and setting design to crafting and delivery, build a lab-grown diamond ring made for your story.", cards: [["Bespoke Process", "Understand the full journey from first conversation to final delivery."], ["Choose a Center Stone", "Filter lab-grown diamonds by shape, carat, color and clarity."], ["Customize the Setting", "Choose metal, setting style, ring size and design details."]] },
   customProcess: { eyebrow: "CUSTOM PROCESS", title: "Bespoke Ring Process", intro: "Create your ring in three steps: choose the diamond, design the setting, then approve production and insured delivery.", cards: [["01 Choose the Diamond", "Confirm shape, carat, color, clarity and certificate."], ["02 Design the Setting", "Select metal, setting style and wearable proportions."], ["03 Craft and Deliver", "Made to order, inspected carefully and shipped with insured delivery."]] },
   customDiamond: { eyebrow: "CHOOSE DIAMOND", title: "Choose Your Center Stone", intro: "Enter the lab-grown diamond filter page and compare shapes, carat ranges and professional diamond parameters.", cards: [["Round / Oval / Pear", "Popular center-stone shapes for engagement rings."], ["Color and Clarity", "Filter by D-M color and FL-I1 clarity ranges."], ["Certificate and Proportion", "Cut, polish, symmetry and fluorescence can be reviewed before purchase."]], cta: "Choose a Diamond" },
@@ -1899,6 +1973,12 @@ const contentPages = {
   settingPave: { eyebrow: "SETTING TYPE", title: "Pavé Setting", intro: "Small diamonds along the band add light across the whole ring.", cards: [["Half Pavé", "Comfortable and bright."], ["Slim Pavé Band", "Lighter and more delicate."], ["Double Pavé", "A more glamorous look."]] },
   settingThreeStone: { eyebrow: "SETTING TYPE", title: "Three-Stone Setting", intro: "Three stones symbolize past, present and future.", cards: [["Emerald Three-Stone", "Composed and refined."], ["Oval Three-Stone", "Soft and visually generous."], ["Pear Side Stones", "Elegant directional lines."]] },
   settingVintage: { eyebrow: "SETTING TYPE", title: "Vintage Setting", intro: "Engraving, milgrain and vintage proportions add ceremony and character.", cards: [["Milgrain Detail", "Fine vintage texture."], ["Engraved Band", "Handcrafted character."], ["Soft Aged Metal", "Warm and understated."]] },
+  ringSizeGuide: {
+    eyebrow: "RING SIZE GUIDE",
+    title: "How to Measure Your Ring Size",
+    intro: "Use a ring you already own, a paper strip, or a jeweler’s measurement to find a comfortable size before placing your Everastone order.",
+    cards: []
+  },
   shipping: {
     eyebrow: "SHIPPING POLICY",
     title: "Shipping Policy",
@@ -1912,58 +1992,71 @@ const contentPages = {
     ],
     cta: "Shop Engagement Rings"
   },
-  returns: {
-    eyebrow: "RETURN POLICY",
-    title: "Return Policy",
-    intro: "We want every ring to feel right. Eligible unworn standard pieces may be returned within 30 days. Bespoke, engraved, resized or special-specification pieces are reviewed case by case.",
+  payment: {
+    eyebrow: "PAYMENT TERMS",
+    title: "Payment Terms",
+    intro: "These Payment Terms apply to every order, deposit, settlement and online payment made through the Everastone official website. By submitting an order and completing payment, you agree to these terms.",
     cards: [
-      ["Eligible items", "Unworn, undamaged standard pieces with complete packaging and certificate may be reviewed within 30 days of delivery."],
-      ["Non-returnable items", "Engraved, bespoke, resized, visibly worn, damaged or incomplete pieces are usually not eligible for no-reason returns."],
-      ["Refund process", "Submit your order number and email. After approval, return inspection is arranged; approved refunds go back to the original payment method."],
-      ["Refund timing", "Once issued, the arrival time depends on PayPal and your card issuer."],
-      ["After-sale support", "For size issues, delivery exceptions or arrival concerns, contact support first so we can help."]
+      ["1. Payment methods and compliance", "Everastone supports official, compliant third-party online payment channels. All payment flows are completed through encrypted channels. You confirm that any payment account, card or payment tool you use is legally owned or authorized by you. Fraudulent payment, card misuse, cash-out behavior or illegal fund movement is strictly prohibited. If detected, Everastone may freeze the order, terminate service and reserve the right to pursue legal responsibility."],
+      ["2. Prices, taxes and fees", "Product prices shown on the website are item prices only and do not include international shipping, customs duties, VAT, import tax or cross-border handling fees unless expressly stated. All overseas taxes, customs charges and clearance costs are the buyer’s responsibility. Everastone may update prices due to product upgrades, market changes or exchange-rate movement, but will not arbitrarily change the price of an order after successful payment."],
+      ["3. Custom-order deposits", "Custom diamond rings, private design changes and exclusive bespoke orders may require a deposit before design, stone sourcing or production begins. Once paid, the deposit reflects material, labor and design costs. Unless the issue is caused by an Everastone quality problem, deposits are non-refundable. When the customer pays the full balance, the deposit is automatically applied toward the final order amount."],
+      ["4. Payment and order activation", "An order becomes effective and enters production scheduling only after full payment has been received. Orders with overdue payment, failed payment or cancelled/refunded payment will be automatically removed from production scheduling, and inventory, design options and price benefits will not be held."],
+      ["5. Payment exceptions", "If duplicate payment, incorrect payment amount, successful charge without order creation or another payment exception occurs, please contact customer support for verification. Once confirmed, any excess amount will be returned through the original payment channel. Abuse of payment system errors, loopholes or arbitrage behavior is prohibited and may result in account and ordering restrictions."]
+    ],
+    cta: "Shop Engagement Rings"
+  },
+  returns: {
+    eyebrow: "RETURN & REFUND POLICY",
+    title: "Return & Refund Policy",
+    intro: "This is the official Everastone return and refund policy for all products. Core rule: eligible items may be returned within 30 days after receipt only if they are unworn, undamaged, free from signs of use and do not affect resale. All return shipping costs are borne by the buyer.",
+    cards: [
+      ["1. Return eligibility", "All conditions must be met: the return request is submitted within 30 calendar days from receipt; the product has no human-caused wear, scratch, impact, deformation, oxidation or corrosion; the product has no signs of wearing, stain, resizing, repolishing or third-party repair; all original accessories are complete, including certificate, gift box, packaging and instructions; and the product has not been engraved, personalized or custom-modified."],
+      ["2. Return shipping responsibility", "For all eligible return orders, international shipping, courier fees, customs clearance fees, duties and handling fees are paid by the buyer. Everastone does not bear any return logistics cost. Refunds cover only the actual product amount paid and exclude shipping, taxes and service fees."],
+      ["3. Non-returnable items", "The following items are not eligible for return: items outside the 30-day return window; items with human damage, wearing marks, deformation, scratches or repair/modification traces; engraved, resized, custom-made, redesigned or one-to-one private design products; products with missing or damaged certificates, packaging or accessories; and special-sale, clearance or limited-time promotional products."],
+      ["4. Refund review and timing", "After Everastone receives and verifies the returned product, we will initiate the original-route refund within 3–7 business days if approved. Delays caused by payment processors, banks or settlement timing are outside Everastone’s responsibility. If inspection finds human damage or missing accessories, Everastone may reject the return, deduct loss costs or deny the refund request."],
+      ["5. Exchange rules", "Standard in-stock products may be exchanged for items of equal value within the 30-day after-sale period if they remain new and undamaged. All logistics costs, taxes and price differences generated by the exchange are borne by the buyer. Custom products are not eligible for exchange."]
     ],
     cta: "Shop Engagement Rings"
   },
   warranty: {
     eyebrow: "WARRANTY POLICY",
     title: "Warranty Policy",
-    intro: "Everastone is committed to carefully crafted jewelry made to accompany your story. We stand behind our workmanship and help resolve eligible issues with care.",
+    intro: "Everastone provides official standard warranty service for jewelry sold through our official channels. This policy is the only valid basis for after-sale warranty service.",
     cards: [
-      ["One-year workmanship warranty", "Orders include a one-year warranty for eligible manufacturing defects such as loose prongs, accent-stone issues or plating concerns."],
-      ["Accent-stone loss", "Within the warranty period, eligible accent-stone replacement may be supported according to the original specification."],
-      ["First size adjustment", "The first eligible size adjustment within one year is complimentary within a limited size range."],
-      ["Resize costs", "Major resizing or resizing after the warranty period is quoted case by case."],
-      ["How to request service", "Contact support with your order information, photos and service request. We will confirm whether local repair or return service is appropriate."],
-      ["Limitations", "This warranty does not cover center-stone loss or damage, misuse, impact damage or issues caused by outside factors."]
+      ["1. Official warranty period", "All jewelry products are covered by one year of official free warranty service from the date the customer receives the item. Everastone also provides one first complimentary ring-size adjustment where the request meets after-sale service rules."],
+      ["2. Free warranty scope", "During the warranty period, non-human workmanship issues may qualify for free repair, reinforcement or inspection. Covered examples include workmanship loosening under normal wear, minor setting loosening, manufacturing defects and issues left from production."],
+      ["3. First complimentary resizing", "All ring products support one complimentary size adjustment for the first resizing request, provided the product has not been damaged by human factors. Return and reshipment logistics costs, customs duties and related taxes are borne by the buyer."],
+      ["4. Exclusions and paid repair", "Paid repair may be offered for damage caused by human impact, dropping, squeezing, deformation, breakage, stone loss or scratching; self-disassembly, third-party repair or third-party alteration; normal wear, oxidation, scratches or aging; chemical, seawater or cosmetic corrosion; lost accessories; and products beyond the one-year warranty period."],
+      ["5. Warranty service rules", "All international shipping, customs duties, taxes and transportation risks related to warranty, repair or resizing service are borne by the buyer. Everastone is responsible for workmanship repair and quality support, but does not bear risk for secondary damage or loss during transportation."],
+      ["6. Warranty invalidation", "Official warranty rights are void for privately altered products, severe human damage, missing accessories or certificates, products purchased through unofficial channels, or orders that cannot be verified."]
     ],
     cta: "Shop Engagement Rings"
   },
   terms: {
     eyebrow: "TERMS OF SERVICE",
     title: "Terms of Service",
-    intro: "By browsing and purchasing from Everastone, you understand and accept the terms related to product display, bespoke communication, payment, production, shipping and after-sale service.",
+    intro: "These Terms of Service govern every user’s access to Everastone’s website, products, custom services, customer consultation and account system. By accessing or using this website, you agree to follow all terms.",
     cards: [
-      ["Product information", "Images, carat, material, specifications and prices are based on the product page and final order confirmation."],
-      ["Order confirmation", "After payment, we begin inventory reservation or production according to the selected specification."],
-      ["Prices and offers", "The first-order 10% discount is based on checkout display and may not combine with all campaigns."],
-      ["Payment security", "Online payment is handled by PayPal or other third-party payment services. We do not store full card details on the frontend."],
-      ["Bespoke service", "Bespoke rings require designer confirmation of budget, design and production timeline."],
-      ["Limitations", "We assist with logistics, customs or third-party service issues, but cannot fully control external processing times."]
+      ["1. User eligibility", "Users must be at least 18 years old and have full civil capacity to place orders and enter service agreements independently. Minors may use this website only under guardian supervision and consent. Users confirm that all registration, shipping and custom-order information submitted is true, accurate and valid."],
+      ["2. Account use rules", "Users are responsible for safeguarding account passwords and login access. All operations, orders and actions under an account are the user’s responsibility. Malicious registration, bulk fake orders, malicious price comparison abuse, abusive returns, account theft and attacks on website services are prohibited. Everastone may restrict, suspend or terminate accounts that violate these rules."],
+      ["3. Custom service rules", "Custom diamond rings are produced according to the final confirmed size, material, diamond shape, specifications and design file. After the customer confirms the plan, Everastone may begin normal production. If the customer unilaterally cancels during production, the customer must bear incurred design, material and labor-loss costs. All design drafts, CAD files and original design copyrights belong to Everastone and may not be copied, reproduced or used commercially without authorization."],
+      ["4. Product display differences", "Website images, videos and renderings are for display reference only. Due to monitor color differences, lighting, photography and device resolution, the physical product may show slight normal visual differences in color and luster. Such differences are normal within the industry and do not constitute a quality problem. Diamond parameters may have reasonable tolerances within industry standards and cannot be used alone as a basis for return or exchange."],
+      ["5. Service rights and termination", "Everastone reserves the right to update website content, optimize services, adjust products, remove styles and fix system errors at any time. For fraudulent orders, abusive promotion use, repeated malicious returns or improper service use, Everastone may terminate service, close the account or refuse future orders without prior notice."],
+      ["6. Intellectual property", "All copy, images, designs, styles, videos, logos and layouts on this website are brand-created assets protected by copyright, trademark and intellectual-property laws. Unauthorized copying, reposting, reproduction or commercial use is prohibited, and Everastone reserves all enforcement rights."]
     ],
     cta: "Shop Engagement Rings"
   },
   privacy: {
     eyebrow: "PRIVACY POLICY",
     title: "Privacy Policy",
-    intro: "Everastone values your privacy. We collect only the information needed for consultation, order processing, payment verification, delivery, after-sale service and security.",
+    intro: "This Privacy Policy applies to the Everastone official website and all online services. It explains how we collect, use, store, protect and disclose personal information generated when you visit the site, register an account, customize products or place orders. By using this website, you voluntarily agree to this Privacy Policy.",
     cards: [
-      ["Information we collect", "Name, contact details, shipping address, order items, bespoke notes, payment status, support messages and reference images you provide."],
-      ["How we use information", "To confirm orders, arrange bespoke service, provide delivery, support after-sale requests and improve the site experience."],
-      ["Payment and third parties", "Payment is processed by third-party services. Logistics, email and storage providers receive only the information required to complete their service."],
-      ["Images and bespoke materials", "Reference images and screenshots are used only for your bespoke consultation, production and after-sale verification unless you give permission for public use."],
-      ["Data protection", "Admin interfaces use permission controls, and production keys should never be exposed in the frontend."],
-      ["Your rights", "You may contact support to request review, correction or deletion of personal information not required for order or compliance records."]
+      ["1. Information we collect", "We collect only information necessary to provide service, including account registration details such as name, email and phone number; shipping details such as address, postal code and recipient; order records; custom requirements; customer consultation records; and non-sensitive data such as browsing behavior, device information and access logs. We do not actively collect sensitive data such as race, religion, national ID information or full bank-card privacy details."],
+      ["2. How we use information", "Your personal information is used only for order processing, product customization, logistics delivery, after-sale communication, account maintenance, customer support, service optimization and security risk control. We do not sell, rent or trade your personal data to third parties without authorization. Information may be disclosed only when required by law, government compliance investigation, platform security risk control or fraud prevention."],
+      ["3. Information security", "This website uses encrypted transmission, data separation and permission controls to protect user data. Payment information is processed through encrypted channels. We strictly control internal access to data to reduce leakage, tampering and misuse risks. However, Everastone is not responsible for risks caused by network conditions, user-side disclosure or vulnerabilities in third-party tools."],
+      ["4. Cookies and access records", "This website may use cookies to improve browsing experience, remember user preferences and optimize page display. You may disable cookies through your browser settings. Disabling cookies will not affect basic browsing, but some personalized services may stop working."],
+      ["5. User rights and deletion", "You have the right to request access, correction or deletion of your personal information and account data. Where no special compliance retention requirement applies, we will assist after identity verification. Order, after-sale and risk-control data may be retained for the period required by applicable laws and regulations."],
+      ["6. Third-party platforms", "This website may include third-party payment, social-link and external-link services. The privacy rules of third-party platforms are governed by those platforms. Information generated when you use third-party services is subject to the corresponding platform’s privacy policy, and Everastone does not assume joint responsibility for those independent services."]
     ],
     cta: "Shop Engagement Rings"
   }
@@ -2024,12 +2117,9 @@ const brandStorySections = [
 
 function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
   const dedicatedDesignerProducts = diamonds
-    .filter((product) => product.category === "designer")
+    .filter((product) => getProductCategory(product) === "designer")
     .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0));
-  const designerProducts = (dedicatedDesignerProducts.length ? dedicatedDesignerProducts : diamonds
-    .filter((product) => ["engagement", "wedding", "couple"].includes(product.category))
-  ).slice(0, 5);
-  const featuredProducts = designerProducts.length ? designerProducts : diamonds.slice(0, 5);
+  const featuredProducts = dedicatedDesignerProducts.slice(0, 5);
   const quickBuy = (product) => {
     const variant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
     addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
@@ -2038,9 +2128,9 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
   return (
     <main className="designer-page">
       <section className="designer-hero">
-        <p className="eyebrow">DESIGNER EDITION</p>
-        <h1>Designer Edition Lab-Grown Diamond Rings</h1>
-        <p>This season’s theme, Scarlet Orbit, uses black-and-gold contrast to amplify lab-grown diamond fire, with a refined red accent for proposal-day emotion.</p>
+        <p className="eyebrow">DESIGNER LIMITED EDITION</p>
+        <h1>Love of a Lifetime</h1>
+        <p>This season’s Love of a Lifetime theme uses black-and-gold contrast to amplify each diamond’s brilliant fire, while a touch of red casts the tender romance of a proposal.</p>
       </section>
       <section className="designer-track" aria-label="Designer edition products">
         {featuredProducts.slice(0, 5).map((product, index) => {
@@ -2051,7 +2141,7 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} loading="lazy" />
               <div>
                 <p className="designer-tag">{Number(product.carat).toFixed(2)}ct · {shapeLabel(product.shape)}</p>
-                <h2>{product.name ?? `${shapeLabel(product.shape)} Designer Diamond Ring`}</h2>
+                <h2>{getProductDisplayName(product)}</h2>
                 <p>Design language: clean shoulders and a high-set center stone, made for polished, memorable proposal moments.</p>
                 <div className="designer-buy-row">
                   <strong>{money(variant.price ?? product.price)}</strong>
@@ -2071,9 +2161,9 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
 
 function FeaturedProductGuide({ diamonds, openProduct, addToCart, setPage, title = "Featured Rings", intro = "Start from a finished style, then personalize the diamond, metal and size with our designer." }) {
   const featured = (diamonds ?? [])
-    .filter((product) => ["engagement", "wedding", "couple"].includes(product.category))
+    .filter((product) => getProductCategory(product) === "engagement")
     .slice(0, 3);
-  const products = featured.length ? featured : (diamonds ?? []).slice(0, 3);
+  const products = featured;
   const quickAdd = (product) => {
     const variant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
     addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
@@ -2104,6 +2194,69 @@ function FeaturedProductGuide({ diamonds, openProduct, addToCart, setPage, title
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+const ringSizeSteps = [
+  ["Measure a ring you already wear", "Choose a ring that fits the same finger. Measure the inside diameter in millimeters across the widest inner point, then compare it with a US or UK size chart."],
+  ["Use a paper strip or soft tape", "Wrap a thin strip of paper around the base of your finger. Mark where it overlaps, measure the length in millimeters, and repeat twice to confirm the circumference."],
+  ["Check comfort and timing", "Measure at the end of the day when fingers are warmer. The ring should slide over the knuckle with light resistance and sit comfortably without spinning too much."],
+  ["When between two sizes", "Choose the larger size for wider bands or if your knuckle is prominent. Choose the smaller size only when the band is narrow and your finger shape is even."]
+];
+
+function RingSizeGuidePage({ setPage }) {
+  return (
+    <main className="utility-page guide-page ring-size-page">
+      <p className="eyebrow">RING SIZE GUIDE</p>
+      <h1>How to Measure Your Ring Size</h1>
+      <p className="content-intro">A calm, simple guide to help you choose a comfortable US or UK ring size before checkout.</p>
+      <section className="guide-steps">
+        {ringSizeSteps.map(([title, text], index) => (
+          <article key={title}>
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <h2>{title}</h2>
+            <p>{text}</p>
+          </article>
+        ))}
+      </section>
+      <section className="ring-size-notes">
+        <h2>Quick measurement notes</h2>
+        <div>
+          <p><strong>Measure twice.</strong> Finger size changes with temperature, time of day, and salt intake.</p>
+          <p><strong>Match the finger.</strong> Left and right hands can differ, so measure the exact finger you plan to wear the ring on.</p>
+          <p><strong>Ask before production.</strong> If you are unsure, contact your designer before final confirmation so we can help choose the safer size.</p>
+        </div>
+      </section>
+      <button className="primary-btn" onClick={() => setPage("content", { contentKey: "custom" })}>Start Bespoke Guidance</button>
+    </main>
+  );
+}
+
+const faqItems = [
+  ["Why are your prices lower?", "We focus on lab-grown diamonds and operate through a direct online model, removing unnecessary retail markups while maintaining quality standards, certificate verification, and careful production control."],
+  ["Are your products authentic?", "Yes. Our lab-grown diamonds have the same crystal structure and optical properties as natural mined diamonds. Eligible products are accompanied by professional grading certificates."],
+  ["Where are your products made?", "Everastone works with experienced jewelry production partners and inspects finished pieces before shipment. Product details and production timelines are confirmed before production begins."],
+  ["Where is your company located?", "Everastone provides online service for customers, including remote design consultation, order progress updates, and trackable international delivery."],
+  ["Do you offer returns or exchanges?", "Eligible unworn standard pieces may be reviewed under our return and exchange policy. Bespoke, engraved, resized, or special-specification products are assessed case by case."],
+  ["What if I have more questions?", "Click the Contact Designer button and leave your WhatsApp or email. Our team will answer questions related to your order or custom request."]
+];
+
+function FAQSection({ compact = false }) {
+  return (
+    <section className={compact ? "faq-page compact" : "faq-page"}>
+      <h1>Frequently Asked Questions</h1>
+      <section className="faq-list" aria-label="Frequently asked questions">
+        {faqItems.map(([question, answer]) => (
+          <details key={question}>
+            <summary>
+              <span>{question}</span>
+              <ChevronDown size={18} />
+            </summary>
+            <p>{answer}</p>
+          </details>
+        ))}
+      </section>
     </section>
   );
 }
@@ -2171,8 +2324,12 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
   if (contentKey === "custom" || contentKey === "customProcess") {
     return <CustomFlowPage setPage={setPage} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} />;
   }
+  if (contentKey === "ringSizeGuide") {
+    return <RingSizeGuidePage setPage={setPage} />;
+  }
   const isCouplePage = Boolean(contentProductCategory[contentKey]);
   const content = isCouplePage ? contentPages.couple : contentPages[contentKey] ?? contentPages.couple;
+  const isLegalPage = ["payment", "returns", "warranty", "terms", "privacy"].includes(contentKey);
   const productCategory = contentProductCategory[contentKey];
   const isCatalogPage = Boolean(productCategory);
   const needsFilters = productCategory === "jewelry";
@@ -2181,13 +2338,13 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
   const [sort, setSort] = useState("popular");
   const coupleMatchers = coupleProductMatchers[contentKey] ?? [];
   const contentProducts = productCategory ? diamonds
-    .filter((product) => product.category === productCategory)
-    .filter((product) => !coupleMatchers.length || coupleMatchers.some((keyword) => `${product.name ?? ""} ${product.id}`.toLowerCase().includes(keyword.toLowerCase())))
-    .filter((product) => !search || `${product.name ?? ""} ${product.id}`.toLowerCase().includes(search.toLowerCase()))
+    .filter((product) => getProductCategory(product) === productCategory)
+    .filter((product) => !coupleMatchers.length || coupleMatchers.some((keyword) => `${product.name ?? ""} ${getProductDisplayName(product)} ${product.id}`.toLowerCase().includes(keyword.toLowerCase())))
+    .filter((product) => !search || `${product.name ?? ""} ${getProductDisplayName(product)} ${product.id}`.toLowerCase().includes(search.toLowerCase()))
     .filter((product) => !shapeFilter || product.shape === shapeFilter)
     .sort((a, b) => sort === "price" ? a.price - b.price : sort === "new" ? b.createdAt - a.createdAt : b.sold - a.sold) : [];
   return (
-    <main className={`utility-page content-page${contentKey === "story" ? " brand-story-page" : ""}`}>
+    <main className={`utility-page content-page${contentKey === "story" ? " brand-story-page" : ""}${isLegalPage ? " legal-content-page" : ""}`}>
       <p className="eyebrow">{content.eyebrow}</p>
       <h1>{content.title}</h1>
       <p className="content-intro">{content.intro}</p>
@@ -2488,12 +2645,6 @@ function Account({ setPage }) {
       rows: ["2.18ct Oval · E / VS1 · IGI", "1.74ct Round · D / VVS2 · GIA", "Pear halo setting concept"],
       actions: [["View favorites", "Favorites opened."], ["Remove selected", "Selected favorite removed."], ["Keep shopping", "Opening engagement rings."]]
     },
-    plans: {
-      title: "Saved Designs",
-      text: "Review saved diamond, metal, size, and setting combinations.",
-      rows: ["Design A · 2ct Oval · 18K White Gold · US 6", "Design B · 2.5ct Pear · Platinum · US 5.5", "Design C · 1.5ct Round · 14K Yellow Gold · UK L"],
-      actions: [["Edit design", "Design editor opened."], ["Duplicate", "Current design duplicated."], ["Start bespoke", "Opening bespoke rings."]]
-    },
     addresses: {
       title: "Addresses",
       text: "Manage saved shipping addresses and default delivery details.",
@@ -2504,10 +2655,9 @@ function Account({ setPage }) {
   const cards = [
     [ShoppingBag, "orders"],
     [Heart, "favorites"],
-    [Sparkles, "plans"],
     [UserRound, "addresses"]
   ];
-  const active = panels[activePanel];
+  const active = panels[activePanel] ?? panels.orders;
 
   return (
     <main className="utility-page account-page">
@@ -2678,28 +2828,7 @@ function Account({ setPage }) {
               </>
             ) : <p>Please sign in to manage shipping addresses.</p>}
           </div>
-        ) : (
-          <>
-            <div className="account-list">
-              {active.rows.map((row) => <button key={row} onClick={() => setNotice(`Selected: ${row}`)}>{row}</button>)}
-            </div>
-            <div className="account-actions">
-              {active.actions.map(([label, message]) => (
-                <button
-                  className={label === "Keep shopping" || label === "Shop again" || label === "Start bespoke" ? "primary-btn" : "secondary-btn"}
-                  key={label}
-                  onClick={() => {
-                    setNotice(message);
-                    if (label === "Keep shopping" || label === "Shop again") setPage("diamonds");
-                    if (label === "Start bespoke") setPage("content", { contentKey: "custom" });
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+        ) : null}
       </section>
     </main>
   );
@@ -2707,7 +2836,7 @@ function Account({ setPage }) {
 
 function BlogPage({ posts, diamonds, openProduct, blogSlug, setPage }) {
   const recommendedProducts = ["oval", "round", "pear"].map((shapeKey) => diamonds
-    .filter((product) => product.shape === shapeKey && product.category !== "couple" && product.category !== "jewelry")
+    .filter((product) => product.shape === shapeKey && getProductCategory(product) === "engagement")
     .sort((a, b) => Number(a.price ?? 0) - Number(b.price ?? 0))[0]
   ).filter(Boolean);
   const publishedPosts = (posts ?? []).filter((post) => post.status !== "draft");
@@ -2732,7 +2861,7 @@ function BlogPage({ posts, diamonds, openProduct, blogSlug, setPage }) {
             <button className="blog-recommend-card" key={product.id} onClick={() => openProduct(product.id)}>
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} />
               <span>{shapeLabelEn(product.shape)} · {Number(product.carat).toFixed(2)}ct</span>
-              <strong>{product.name}</strong>
+              <strong>{getProductDisplayName(product)}</strong>
               <small>{money(product.price)}</small>
             </button>
           ))}
@@ -2769,7 +2898,7 @@ function BlogPage({ posts, diamonds, openProduct, blogSlug, setPage }) {
             <button className="blog-recommend-card" key={product.id} onClick={() => openProduct(product.id)}>
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} />
               <span>{shapeLabelEn(product.shape)} · {Number(product.carat).toFixed(2)}ct</span>
-              <strong>{product.name}</strong>
+              <strong>{getProductDisplayName(product)}</strong>
               <small>{money(product.price)}</small>
             </button>
           ))}
@@ -3017,7 +3146,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const activeProductCategory = productCategories.find((category) => category.key === productTab) ?? productCategories[0];
   const currentProducts = productCatalog.filter((product) => {
     const keyword = `${product.name} ${product.sku} ${product.material} ${product.shape} ${product.status}`.toLowerCase();
-    return product.category === productTab && keyword.includes(productSearch.toLowerCase());
+    return getProductCategory(product) === productTab && keyword.includes(productSearch.toLowerCase());
   });
   const openProductModal = (mode, product = null) => {
     if (product) {
@@ -3049,7 +3178,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     const firstVariant = product.variants?.[0];
     const diamondItem = {
       id: product.sku,
-      category: product.category,
+      category: getProductCategory(product),
       name: product.name,
       shape: shapeKeyFromLabel(product.shape),
       carat: Number(firstVariant?.carat ?? product.carat) || 1,
@@ -3332,51 +3461,16 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   }, []);
 
   useEffect(() => {
-    productCatalog.forEach(syncProductToFrontend);
-    const generatedAdminProducts = categorySeedProducts.map((product) => ({
-      id: product.id,
-      category: product.category,
-      name: product.name,
-      sku: product.id,
-      price: product.price,
-      stock: 12,
-      material: getMainMaterial(product.variants?.[0]?.material ?? "铂金"),
-      mainStone: "培育钻石",
-      shape: product.shape,
-      carat: String(product.carat),
-      color: product.color,
-      clarity: product.clarity,
-      cut: product.cut,
-      certificate: product.certificate,
-      polish: product.polish,
-      symmetry: product.symmetry,
-      depth: product.depth,
-      table: product.table,
-      ratio: product.ratio,
-      fluorescence: product.fluorescence,
-      size: "US 5-9 / UK J-R",
-      status: "上架",
-      images: product.images ?? [],
-      materialImages: product.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] },
-      videoUrls: product.videoUrls ?? [],
-      description: product.description ?? `这款${shapeLabel(product.shape)}培育钻石商品支持多规格定制，适合日常佩戴与重要时刻赠礼。`,
-      imageCaption: product.imageCaption ?? `上传图片为 ${Number(product.carat).toFixed(2)}ct ${shapeLabel(product.shape)}实物图`,
-      imageAlt: product.name,
-      imageTitle: product.imageTitle ?? "",
-      variants: (product.variants ?? []).map((variant) => ({ ...normalizeProductVariant(variant, product.material, product.price), price: String(variant.price) }))
-    }));
-    setProductCatalog((items) => {
-      const missing = generatedAdminProducts.filter((product) => !items.some((item) => item.id === product.id));
-      return missing.length ? [...missing, ...items] : items;
-    });
+    // Do not auto-publish seed/demo products to the storefront.
+    // Frontend pages should only receive products explicitly saved from admin or fetched from the API.
   }, []);
 
   useEffect(() => {
     const syncedProducts = diamonds
-      .filter((product) => productCategories.some((category) => category.key === product.category))
+      .filter((product) => productCategories.some((category) => category.key === getProductCategory(product)))
       .map((product) => ({
         id: product.id,
-        category: product.category,
+        category: getProductCategory(product),
         name: product.name ?? `${shapeLabel(product.shape)}培育钻石商品`,
         sku: product.sku ?? product.id,
         price: Number(product.price) || 0,
@@ -3845,38 +3939,37 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
           {adminTab === "blog" ? (
             <section className="admin-panel large blog-admin-panel">
               <div className="admin-panel-title">
-                <h2><BookOpen /> 品牌博客</h2>
+                <h2><BookOpen /> Brand Blog</h2>
                 <div>
-                  <button className="ghost-btn" onClick={() => setBlogDraft({ id: "", slug: "", title: "", metaTitle: "", metaDescription: "", subtitle: "", cover: "", image: "", content: "", status: "published", updatedAt: new Date().toISOString().slice(0, 10) })}>新增博客</button>
-                  <button className="ghost-btn" onClick={() => logAction("预览博客列表页 /blog")}>预览列表页</button>
+                  <button className="ghost-btn" onClick={() => setBlogDraft({ id: "", slug: "", title: "", metaTitle: "", metaDescription: "", subtitle: "", cover: "", image: "", content: "", status: "published", updatedAt: new Date().toISOString().slice(0, 10) })}>New Post</button>
+                  <button className="ghost-btn" onClick={() => setPage("blog")}>Preview Blog</button>
                 </div>
               </div>
-              <p className="admin-api-notice">每篇博客前台都会默认推荐椭圆、圆形、水滴形里价格最低的戒指，帮助用户继续访问商品。</p>
+              <p className="admin-api-notice">Published posts are automatically included in the dynamic sitemap. Each blog detail page also recommends the lowest-priced oval, round and pear ring by default.</p>
               <div className="blog-admin-grid">
                 <div className="admin-form blog-admin-form">
-                  <label><span>博客标题</span><input value={blogDraft.title} onChange={(event) => setBlogDraft({ ...blogDraft, title: event.target.value })} placeholder="例如：How to Choose an Oval Lab-Grown Diamond Ring" /></label>
+                  <label><span>Blog Title</span><input value={blogDraft.title} onChange={(event) => setBlogDraft({ ...blogDraft, title: event.target.value })} placeholder="How to Choose an Oval Lab-Grown Diamond Ring" /></label>
                   <label><span>SEO URL Slug</span><input value={blogDraft.slug ?? ""} onChange={(event) => setBlogDraft({ ...blogDraft, slug: slugify(event.target.value) })} placeholder="oval-lab-grown-diamond-ring-guide" /></label>
-                  <label className="wide"><span>{"<title>"}</span><input value={blogDraft.metaTitle ?? ""} onChange={(event) => setBlogDraft({ ...blogDraft, metaTitle: event.target.value })} placeholder="例如：Oval Lab-Grown Diamond Ring Guide | everastone" /></label>
-                  <label className="wide"><span>Meta Description</span><textarea value={blogDraft.metaDescription ?? ""} onChange={(event) => setBlogDraft({ ...blogDraft, metaDescription: event.target.value })} placeholder="填写搜索结果中展示的页面描述，建议 120–160 个英文字符。" /></label>
-                  <label><span>副标题</span><input value={blogDraft.subtitle} onChange={(event) => setBlogDraft({ ...blogDraft, subtitle: event.target.value })} placeholder="一句话概括文章价值" /></label>
-                  <label><span>发布日期</span><input value={blogDraft.updatedAt} onChange={(event) => setBlogDraft({ ...blogDraft, updatedAt: event.target.value })} placeholder="2026-09-16" /></label>
-                  <label><span>状态</span><select value={blogDraft.status} onChange={(event) => setBlogDraft({ ...blogDraft, status: event.target.value })}><option value="published">发布</option><option value="draft">草稿</option></select></label>
-                  <label className="wide"><span>博客封面图片</span><input type="file" accept="image/*" onChange={handleBlogImageUpload} /></label>
-                  {blogDraft.image ? <img className="blog-admin-preview" src={blogDraft.image} alt="博客封面预览" /> : null}
-                  <label className="wide"><span>列表摘要</span><textarea value={blogDraft.cover} onChange={(event) => setBlogDraft({ ...blogDraft, cover: event.target.value })} placeholder="显示在博客卡片里的重点摘要" /></label>
-                  <label className="wide"><span>正文内容</span><textarea value={blogDraft.content} onChange={(event) => setBlogDraft({ ...blogDraft, content: event.target.value })} placeholder="填写完整博客正文，可用于品牌故事、选钻指南、定制科普等" /></label>
-                  <label className="wide"><span>博客 GSC Sitemap（保存后自动更新）</span><textarea readOnly value={buildBlogSitemapXml(blogPosts)} /></label>
-                  <button className="primary-btn" onClick={saveBlogPost}>{blogDraft.id ? "保存修改" : "发布博客"}</button>
+                  <label className="wide"><span>{"<title>"}</span><input value={blogDraft.metaTitle ?? ""} onChange={(event) => setBlogDraft({ ...blogDraft, metaTitle: event.target.value })} placeholder="Oval Lab-Grown Diamond Ring Guide | everastone" /></label>
+                  <label className="wide"><span>Meta Description</span><textarea value={blogDraft.metaDescription ?? ""} onChange={(event) => setBlogDraft({ ...blogDraft, metaDescription: event.target.value })} placeholder="Write the search-result description. Recommended length: 120–160 English characters." /></label>
+                  <label><span>Subtitle</span><input value={blogDraft.subtitle} onChange={(event) => setBlogDraft({ ...blogDraft, subtitle: event.target.value })} placeholder="A one-line summary of the article." /></label>
+                  <label><span>Publish Date</span><input value={blogDraft.updatedAt} onChange={(event) => setBlogDraft({ ...blogDraft, updatedAt: event.target.value })} placeholder="2026-09-16" /></label>
+                  <label><span>Status</span><select value={blogDraft.status} onChange={(event) => setBlogDraft({ ...blogDraft, status: event.target.value })}><option value="published">Published</option><option value="draft">Draft</option></select></label>
+                  <label className="wide"><span>Cover Image</span><input type="file" accept="image/*" onChange={handleBlogImageUpload} /></label>
+                  {blogDraft.image ? <img className="blog-admin-preview" src={blogDraft.image} alt="Blog cover preview" /> : null}
+                  <label className="wide"><span>List Summary</span><textarea value={blogDraft.cover} onChange={(event) => setBlogDraft({ ...blogDraft, cover: event.target.value })} placeholder="This appears on the blog listing card." /></label>
+                  <label className="wide"><span>Article Content</span><textarea value={blogDraft.content} onChange={(event) => setBlogDraft({ ...blogDraft, content: event.target.value })} placeholder="Write the full blog article here." /></label>
+                  <button className="primary-btn" onClick={saveBlogPost}>{blogDraft.id ? "Save Changes" : "Publish Post"}</button>
                 </div>
                 <div className="blog-admin-list">
                   {blogPosts.map((post) => (
                     <article key={post.id}>
-                      <span>{post.status === "draft" ? "草稿" : "已发布"} · {post.updatedAt}</span>
+                      <span>{post.status === "draft" ? "Draft" : "Published"} · {post.updatedAt}</span>
                       <h3>{post.title}</h3>
                       <p>{post.subtitle}</p>
                       <div className="admin-actions">
-                        <button onClick={() => editBlogPost(post)}>编辑</button>
-                        <button onClick={() => deleteBlogPost(post.id)}>删除</button>
+                        <button onClick={() => editBlogPost(post)}>Edit</button>
+                        <button onClick={() => deleteBlogPost(post.id)}>Delete</button>
                       </div>
                     </article>
                   ))}
@@ -3963,8 +4056,11 @@ function Footer({ openContent, setPage, socialLinks }) {
   ];
   return (
     <footer className="site-footer">
-      <div>
-        <strong>everastone</strong>
+      <div className="footer-brand-block">
+        <div className="footer-brand-row">
+          <span className="brand-mark footer-brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" /></span>
+          <strong>EVERASTONE</strong>
+        </div>
         <p>{homeCopy.footer.brandText.en}</p>
         <p>{homeCopy.footer.slogan.en}</p>
         <div className="footer-socials" aria-label="Social media links">
@@ -3976,17 +4072,19 @@ function Footer({ openContent, setPage, socialLinks }) {
           ))}
         </div>
       </div>
-      <div>
-        <span>{homeCopy.footer.insured.en}</span>
-        <span>{homeCopy.footer.returns.en}</span>
+      <div className="footer-links-block">
+        <span className="footer-note">{homeCopy.footer.insured.en}</span>
+        <span className="footer-note">{homeCopy.footer.returns.en}</span>
         <button className="footer-link" onClick={() => setPage("blog")}>Brand Blog</button>
         <button className="footer-link" onClick={() => openContent("shipping")}>Shipping Policy</button>
-        <button className="footer-link" onClick={() => openContent("returns")}>Returns Policy</button>
+        <button className="footer-link" onClick={() => openContent("payment")}>Payment Terms</button>
+        <button className="footer-link" onClick={() => openContent("returns")}>Return & Refund Policy</button>
         <button className="footer-link" onClick={() => openContent("warranty")}>Warranty Policy</button>
         <button className="footer-link" onClick={() => openContent("terms")}>Terms of Service</button>
         <button className="footer-link" onClick={() => openContent("privacy")}>Privacy Policy</button>
         <span>{homeCopy.footer.email.en}</span>
       </div>
+      <p className="footer-copyright">© 2026 Everastone版权所有</p>
     </footer>
   );
 }
@@ -4138,11 +4236,7 @@ const categorySeedProducts = [
   { id: "JW-PEAR-204", category: "jewelry", name: "水滴形钻石吊坠项链", shape: "pear", carat: 1, color: "E", clarity: "VS1", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "GIA", fluorescence: "None", depth: "63.2%", table: "59%", ratio: "1.55", price: 1880, image: shapes.find((shape) => shape.key === "pear")?.image, images: [shapes.find((shape) => shape.key === "pear")?.image], variants: [{ carat: "0.80", material: "18K 白金", price: 1560 }, { carat: "1.00", material: "铂金", price: 1880 }, { carat: "1.50", material: "铂金", price: 2680 }], fast: true, realPhoto: true, createdAt: 38, sold: 39 }
 ];
 
-const initialFrontendProducts = [
-  ...categorySeedProducts,
-  ...adminSeedProducts,
-  ...initialDiamonds.filter((diamond) => ![...categorySeedProducts, ...adminSeedProducts].some((product) => product.id === diamond.id))
-];
+const initialFrontendProducts = [];
 
 export function App() {
   const [page, setPageState] = useState(() => pageFromPath(window.location.pathname));
@@ -4150,7 +4244,7 @@ export function App() {
   const [blogSlug, setBlogSlug] = useState(() => blogSlugFromPath(window.location.pathname));
   const [filters, setFilters] = useState(initialFilters);
   const [diamonds, setDiamonds] = useState(() => mergeProductsById(initialFrontendProducts, readSharedFrontendProducts()));
-  const [selectedId, setSelectedId] = useState(initialFrontendProducts[0].id);
+  const [selectedId, setSelectedId] = useState(initialFrontendProducts[0]?.id ?? "");
   const [cart, setCart] = useState([]);
   const [serviceCount, setServiceCount] = useState(8659);
   const [socialLinks, setSocialLinks] = useState(() => readSocialLinks());
@@ -4274,9 +4368,11 @@ export function App() {
       customDiamond: coreMeta.bespoke,
       customSetting: coreMeta.bespoke,
       story: coreMeta.story,
+      ringSizeGuide: { title: "Ring Size Guide | Measure Your Ring Size | Everastone", description: "Learn how to measure your ring size at home with a ring, paper strip, or soft tape before ordering an Everastone lab-grown diamond ring." },
+      payment: { title: "Payment Terms | Everastone", description: "Read Everastone payment terms for online checkout, custom-order deposits, taxes, duties and payment exceptions." },
       privacy: { title: "Privacy Policy | Everastone", description: "Read Everastone privacy practices for customer data, orders and online services." },
       terms: { title: "Terms of Service | Everastone", description: "Read Everastone terms of service for ordering, checkout, delivery and website use." },
-      returns: { title: "Return Policy | Everastone", description: "Review Everastone return policy for eligible unworn jewelry and order support." },
+      returns: { title: "Return & Refund Policy | Everastone", description: "Review Everastone return and refund rules for eligible unworn jewelry, return shipping and refund review." },
       warranty: { title: "Warranty Policy | Everastone", description: "Review Everastone warranty policy for lab-grown diamond jewelry and after-sale service." }
     };
     const titleMap = {
@@ -4363,7 +4459,7 @@ export function App() {
       ...items,
       {
         cartId: `${product.id}-${metal}-${size}-${Date.now()}`,
-        title: product.name ?? `${product.carat.toFixed(2)} ct ${shapeLabel(product.shape)} 培育钻石戒指`,
+        title: getProductDisplayName(product),
         price: product.price,
         image: getPrimaryProductImage(product),
         imageAlt: getProductImageAlt(product),
@@ -4378,7 +4474,7 @@ export function App() {
       pagePath: window.location.pathname,
       productId: product.id,
       sessionId: getAnalyticsSessionId(),
-      metadata: { title: product.name ?? product.title, metal, size, price: product.price }
+      metadata: { title: getProductDisplayName(product), metal, size, price: product.price }
     }).catch(() => {});
   };
   const submitOrder = (count = 1) => {
@@ -4392,7 +4488,7 @@ export function App() {
       {page === "diamonds" ? <FilterPage filters={filters} setFilters={setFilters} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}
       {page === "product" ? <ProductDetail product={selectedProduct} addToCart={addToCart} setPage={setPage} products={diamonds} openProduct={openProduct} /> : null}
       {page === "cart" ? <Cart cart={cart} setCart={setCart} setPage={setPage} /> : null}
-      {page === "checkout" ? <Checkout cart={cart} onSubmitOrder={submitOrder} /> : null}
+      {page === "checkout" ? <Checkout cart={cart} onSubmitOrder={submitOrder} openContent={openContent} /> : null}
       {page === "account" ? <Account setPage={setPage} /> : null}
       {page === "blog" ? <BlogPage posts={blogPosts} diamonds={diamonds} openProduct={openProduct} blogSlug={blogSlug} setPage={setPage} /> : null}
       {page === "content" ? <ContentPage contentKey={contentKey} setPage={setPage} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}

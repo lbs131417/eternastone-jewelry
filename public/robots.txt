@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://everastone.com/sitemap.xml
+Sitemap: https://www.everastone.com/sitemap.xml

@@ -7075,6 +7075,755 @@ textarea {
   gap: 12px;
 }
 
+/* Final desktop matching-rings guard: this must stay after earlier product-card rules. */
+@media (min-width: 641px) {
+  .content-page .couple-products-layout {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .content-page .couple-subcategory-panel {
+    position: relative !important;
+    top: auto !important;
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin: 0 0 24px !important;
+    padding: 12px !important;
+    overflow-x: auto !important;
+  }
+
+  .content-page .couple-subcategory-panel > span {
+    flex: 0 0 auto !important;
+    align-self: center !important;
+    min-width: max-content !important;
+    margin-right: 4px !important;
+  }
+
+  .content-page .couple-subcategory-panel button {
+    flex: 1 1 160px !important;
+    min-width: 150px !important;
+    max-width: 240px !important;
+  }
+
+  .content-page .content-products-main,
+  .content-page .content-products-main .product-grid {
+    width: 100% !important;
+  }
+
+  .content-page .content-products-main .results-toolbar {
+    margin-bottom: 16px !important;
+  }
+
+  .content-page .content-products .product-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 18px !important;
+  }
+
+  .content-page .content-products .product-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .content-page .content-products .product-card > img {
+    width: 100% !important;
+    height: 220px !important;
+    object-fit: cover !important;
+  }
+
+  .content-page .content-products .card-material-swatches {
+    max-width: 110px !important;
+  }
+
+  .content-page .content-products .card-price-row {
+    max-width: calc(100% - 128px) !important;
+  }
+
+  .content-page .content-products .product-card strong {
+    white-space: nowrap !important;
+  }
+}
+
+/* Absolute final title scale-down: reduce primary page titles by about 30%. */
+.catalog-page .catalog-top h1,
+.content-page > h1,
+.brand-story-page > h1,
+.designer-page .designer-hero h1,
+.custom-flow-page .custom-flow-hero h1 {
+  font-size: clamp(32px, 3.2vw, 53px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.052em !important;
+  max-width: min(920px, 90vw) !important;
+  overflow-wrap: normal !important;
+  text-wrap: balance;
+}
+
+.catalog-page .catalog-top > p:not(.eyebrow),
+.content-page > .content-intro,
+.brand-story-page > .content-intro,
+.designer-page .designer-hero > p:not(.eyebrow),
+.custom-flow-page .custom-flow-hero p {
+  max-width: min(980px, 90vw) !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+@media (max-width: 640px) {
+  .catalog-page .catalog-top h1,
+  .content-page > h1,
+  .brand-story-page > h1,
+  .designer-page .designer-hero h1,
+  .custom-flow-page .custom-flow-hero h1 {
+    font-size: clamp(22px, 6.2vw, 28px) !important;
+    line-height: 1.12 !important;
+    letter-spacing: -0.045em !important;
+  }
+}
+
+/* Absolute final footer social buttons: icon-only compact style. */
+.site-footer .footer-socials {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  margin-top: 14px !important;
+}
+
+.site-footer .footer-socials a {
+  display: inline-grid !important;
+  place-items: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+}
+
+.site-footer .footer-socials a small {
+  display: none !important;
+}
+
+.site-footer .footer-socials a > svg {
+  width: 24px !important;
+  height: 24px !important;
+  color: #fff4d8 !important;
+}
+
+@media (max-width: 640px) {
+  .site-footer .footer-socials a {
+    flex-basis: 38px !important;
+    width: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+
+  .site-footer .footer-socials a > svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+}
+
+/* Absolute final homepage FAQ alignment. */
+.faq-page .faq-list,
+.faq-page .faq-list details,
+.faq-page .faq-list summary,
+.faq-page .faq-list details p {
+  text-align: center !important;
+}
+
+.faq-page .faq-list summary {
+  justify-content: center !important;
+  position: relative;
+}
+
+.faq-page .faq-list summary svg {
+  position: absolute;
+  right: 8px;
+}
+
+.faq-page .faq-list details p {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Final compact dropdown and homepage FAQ placement. */
+.site-header .nav-menu-inner {
+  gap: 24px !important;
+}
+
+.site-header .nav-menu-section {
+  gap: 3px !important;
+}
+
+.site-header .nav-menu-section strong {
+  margin-bottom: 5px !important;
+  line-height: 1 !important;
+}
+
+.site-header .nav-menu-section button {
+  min-height: 30px !important;
+  padding: 3px 4px !important;
+  line-height: 1 !important;
+}
+
+.site-header .nav-menu-section button span {
+  line-height: 1 !important;
+}
+
+.site-header .nav-menu-section button.nav-emphasis-link span {
+  color: #231f18 !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.13em !important;
+}
+
+.faq-page {
+  padding: clamp(54px, 7vw, 86px) clamp(18px, 5vw, 70px);
+  background: #fff;
+  text-align: center;
+}
+
+.faq-page h1 {
+  margin: 0 auto;
+  color: #254f5f;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(28px, 3vw, 42px);
+  letter-spacing: 0.12em;
+  line-height: 1.15;
+}
+
+.faq-list {
+  margin: 34px auto 0;
+  max-width: 1080px;
+  border-top: 1px solid rgba(28, 56, 68, 0.16);
+  text-align: left;
+}
+
+.faq-list details {
+  border-bottom: 1px solid rgba(28, 56, 68, 0.16);
+}
+
+.faq-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 58px;
+  padding: 0 8px;
+  color: #254f5f;
+  cursor: pointer;
+  list-style: none;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-list summary svg {
+  flex: 0 0 auto;
+  color: #101010;
+  transition: transform 0.25s ease;
+}
+
+.faq-list details[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.faq-list details p {
+  max-width: 860px;
+  margin: -2px 0 18px;
+  padding: 0 8px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .site-header .nav-menu-section button {
+    min-height: 28px !important;
+  }
+
+  .faq-page {
+    padding: 42px 16px;
+  }
+
+  .faq-list summary {
+    min-height: 52px;
+    font-size: 15px;
+  }
+}
+
+/* Final navigation spacing plus guide / FAQ pages. */
+.site-header .nav-menu-inner {
+  gap: 28px !important;
+  align-items: start !important;
+}
+
+.site-header .nav-menu-section {
+  gap: 8px !important;
+}
+
+.site-header .nav-menu-section strong {
+  margin-bottom: 8px !important;
+  line-height: 1.1 !important;
+}
+
+.site-header .nav-menu-section button {
+  min-height: 42px !important;
+  padding: 6px 4px !important;
+  gap: 10px !important;
+  line-height: 1.15 !important;
+}
+
+.site-header .nav-menu-section button span {
+  line-height: 1.15 !important;
+}
+
+.guide-page,
+.faq-page {
+  max-width: 1180px !important;
+}
+
+.guide-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 34px 0 20px;
+}
+
+.guide-steps article,
+.ring-size-notes {
+  border: 1px solid rgba(212, 184, 134, 0.34);
+  border-radius: 20px;
+  background: rgba(255, 252, 246, 0.82);
+  box-shadow: 0 20px 48px rgba(30, 26, 18, 0.06);
+}
+
+.guide-steps article {
+  padding: 22px;
+}
+
+.guide-steps span {
+  color: var(--gold);
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.guide-steps h2 {
+  margin: 14px 0 8px;
+  font-size: 18px;
+  line-height: 1.18;
+}
+
+.guide-steps p,
+.ring-size-notes p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.ring-size-notes {
+  display: grid;
+  grid-template-columns: 0.72fr 1.28fr;
+  gap: 20px;
+  padding: 26px;
+  margin: 16px 0 26px;
+}
+
+.ring-size-notes h2 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.ring-size-notes div {
+  display: grid;
+  gap: 10px;
+}
+
+.faq-page {
+  text-align: center;
+}
+
+.faq-list {
+  margin: 34px auto 0;
+  max-width: 1080px;
+  border-top: 1px solid rgba(28, 56, 68, 0.16);
+  text-align: left;
+}
+
+.faq-list details {
+  border-bottom: 1px solid rgba(28, 56, 68, 0.16);
+}
+
+.faq-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 62px;
+  padding: 0 8px;
+  color: #254f5f;
+  cursor: pointer;
+  list-style: none;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-list summary svg {
+  flex: 0 0 auto;
+  color: #101010;
+  transition: transform 0.25s ease;
+}
+
+.faq-list details[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.faq-list details p {
+  max-width: 860px;
+  margin: -4px 0 18px;
+  padding: 0 8px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .guide-steps {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ring-size-notes {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-header .nav-menu-section button {
+    min-height: 36px !important;
+  }
+
+  .guide-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .faq-list summary {
+    min-height: 56px;
+    font-size: 15px;
+  }
+}
+
+/* Absolute final logo and footer social polish. */
+.brand-mark {
+  display: grid !important;
+  place-items: center !important;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(199, 173, 120, 0.48) !important;
+  border-radius: 50% !important;
+  background: rgba(255, 253, 247, 0.92) !important;
+  box-shadow: 0 10px 28px rgba(22, 18, 12, 0.08) !important;
+}
+
+.brand-mark img {
+  display: block !important;
+  width: 82% !important;
+  height: 82% !important;
+  object-fit: contain !important;
+}
+
+.footer-socials {
+  gap: 8px !important;
+  margin-top: 12px !important;
+}
+
+.footer-socials a {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  gap: 5px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
+.footer-socials span {
+  width: 15px !important;
+  height: 15px !important;
+  font-size: 10px !important;
+}
+
+.footer-socials svg {
+  width: 13px !important;
+  height: 13px !important;
+}
+
+@media (max-width: 640px) {
+  .brand-mark {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .footer-socials {
+    display: grid !important;
+    grid-template-columns: repeat(3, max-content) !important;
+    align-items: center !important;
+  }
+
+  .footer-socials a {
+    min-height: 26px !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* Final desktop catalog layout and hero overflow fixes. */
+@media (min-width: 1024px) {
+  .catalog-page .product-grid,
+  .content-page .content-products .product-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 18px !important;
+    width: 100% !important;
+  }
+
+  .catalog-top h1 {
+    max-width: 820px !important;
+    font-size: clamp(46px, 4.15vw, 66px) !important;
+    line-height: 1.04 !important;
+    letter-spacing: -0.06em !important;
+  }
+
+  .designer-hero h1 {
+    font-size: clamp(48px, 4.3vw, 72px) !important;
+    line-height: 1.02 !important;
+  }
+
+  .designer-hero > p:not(.eyebrow) {
+    max-width: min(1040px, 86vw) !important;
+    white-space: normal !important;
+    text-wrap: balance;
+  }
+
+  .content-page > .content-intro,
+  .custom-flow-hero p {
+    max-width: min(980px, 86vw) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 640px) {
+  .catalog-top h1 {
+    font-size: clamp(27px, 7.8vw, 34px) !important;
+    line-height: 1.1 !important;
+  }
+
+  .designer-hero h1 {
+    font-size: clamp(28px, 8vw, 36px) !important;
+    line-height: 1.08 !important;
+  }
+
+  .content-page > .content-intro,
+  .custom-flow-hero p,
+  .designer-hero > p:not(.eyebrow) {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Final page-copy polish: keep refreshed hero copy elegant and compact. */
+.catalog-top h1,
+.content-page > h1,
+.designer-hero h1 {
+  font-size: clamp(42px, 4.6vw, 76px) !important;
+  line-height: 1.02 !important;
+  letter-spacing: -0.055em !important;
+}
+
+.catalog-top > p:not(.eyebrow),
+.content-page > .content-intro,
+.designer-hero > p:not(.eyebrow) {
+  max-width: min(1120px, 92vw) !important;
+  line-height: 1.55 !important;
+}
+
+@media (min-width: 1024px) {
+  .catalog-top > p:not(.eyebrow),
+  .content-page > .content-intro,
+  .designer-hero > p:not(.eyebrow) {
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .catalog-top h1,
+  .content-page > h1,
+  .designer-hero h1 {
+    font-size: clamp(28px, 8.2vw, 38px) !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.052em !important;
+  }
+
+  .catalog-top > p:not(.eyebrow),
+  .content-page > .content-intro,
+  .designer-hero > p:not(.eyebrow) {
+    font-size: 14px !important;
+    line-height: 1.45 !important;
+  }
+}
+
+/* Final material switch polish: use compact YG / PT / RG chips. */
+.catalog-page .card-material-swatches,
+.content-products .card-material-swatches {
+  gap: 5px !important;
+  margin-top: 5px !important;
+  padding-top: 5px !important;
+  min-height: 24px !important;
+}
+
+.catalog-page .card-material-swatches span,
+.content-products .card-material-swatches span {
+  display: grid !important;
+  place-items: center !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 999px !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.02em !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+  white-space: nowrap !important;
+}
+
+.catalog-page .product-card,
+.content-products .product-card {
+  padding-bottom: 12px !important;
+}
+
+.catalog-page .product-card > div:not(.card-material-swatches),
+.content-products .product-card > div:not(.card-material-swatches) {
+  padding-bottom: 2px !important;
+}
+
+@media (max-width: 640px) {
+  .catalog-page .card-material-swatches,
+  .content-products .card-material-swatches {
+    bottom: 9px !important;
+    gap: 4px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 16px !important;
+  }
+
+  .catalog-page .card-material-swatches span,
+  .content-products .card-material-swatches span {
+    width: 16px !important;
+    min-width: 16px !important;
+    max-width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    max-height: 16px !important;
+    font-size: 7px !important;
+  }
+}
+
+/* Desktop matching-rings layout fix: keep product cards readable instead of narrow columns. */
+@media (min-width: 641px) {
+  .content-page .couple-products-layout {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .content-page .couple-subcategory-panel {
+    position: relative !important;
+    top: auto !important;
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin: 0 0 24px !important;
+    padding: 12px !important;
+    overflow-x: auto !important;
+  }
+
+  .content-page .couple-subcategory-panel > span {
+    flex: 0 0 auto !important;
+    align-self: center !important;
+    min-width: max-content !important;
+    margin-right: 4px !important;
+  }
+
+  .content-page .couple-subcategory-panel button {
+    flex: 1 1 160px !important;
+    min-width: 150px !important;
+    max-width: 240px !important;
+  }
+
+  .content-page .content-products-main {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .content-page .content-products-main .results-toolbar {
+    margin-bottom: 16px !important;
+  }
+
+  .content-page .content-products .product-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 18px !important;
+    width: 100% !important;
+  }
+
+  .content-page .content-products .product-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .content-page .content-products .product-card > img {
+    width: 100% !important;
+    height: 220px !important;
+    object-fit: cover !important;
+  }
+
+  .content-page .content-products .card-material-swatches {
+    max-width: 110px !important;
+  }
+
+  .content-page .content-products .card-price-row {
+    max-width: calc(100% - 128px) !important;
+  }
+
+  .content-page .content-products .product-card strong {
+    white-space: nowrap !important;
+  }
+}
+
 .designer-buy-row {
   display: flex;
   align-items: center;
@@ -11392,5 +12141,355 @@ textarea {
 
   .account-page .address-form .wide {
     grid-column: auto !important;
+  }
+}
+
+/* Final desktop matching-rings guard: keep product cards readable after all overrides. */
+@media (min-width: 641px) {
+  .content-page .couple-products-layout {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .content-page .couple-subcategory-panel {
+    position: relative !important;
+    top: auto !important;
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin: 0 0 24px !important;
+    padding: 12px !important;
+    overflow-x: auto !important;
+  }
+
+  .content-page .couple-subcategory-panel > span {
+    flex: 0 0 auto !important;
+    align-self: center !important;
+    min-width: max-content !important;
+    margin-right: 4px !important;
+  }
+
+  .content-page .couple-subcategory-panel button {
+    flex: 1 1 160px !important;
+    min-width: 150px !important;
+    max-width: 240px !important;
+  }
+
+  .content-page .content-products-main,
+  .content-page .content-products-main .product-grid {
+    width: 100% !important;
+  }
+
+  .content-page .content-products-main .results-toolbar {
+    margin-bottom: 16px !important;
+  }
+
+  .content-page .content-products .product-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 18px !important;
+  }
+
+  .content-page .content-products .product-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .content-page .content-products .product-card > img {
+    width: 100% !important;
+    height: 220px !important;
+    object-fit: cover !important;
+  }
+
+  .content-page .content-products .card-material-swatches {
+    max-width: 110px !important;
+  }
+
+  .content-page .content-products .card-price-row {
+    max-width: calc(100% - 128px) !important;
+  }
+
+  .content-page .content-products .product-card strong {
+    white-space: nowrap !important;
+  }
+}
+
+/* Absolute final title scale-down: reduce primary page titles by about 30%. */
+.catalog-page .catalog-top h1,
+.content-page > h1,
+.brand-story-page > h1,
+.designer-page .designer-hero h1,
+.custom-flow-page .custom-flow-hero h1 {
+  font-size: clamp(32px, 3.2vw, 53px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.052em !important;
+  max-width: min(920px, 90vw) !important;
+  overflow-wrap: normal !important;
+  text-wrap: balance;
+}
+
+.catalog-page .catalog-top > p:not(.eyebrow),
+.content-page > .content-intro,
+.brand-story-page > .content-intro,
+.designer-page .designer-hero > p:not(.eyebrow),
+.custom-flow-page .custom-flow-hero p {
+  max-width: min(980px, 90vw) !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+@media (max-width: 640px) {
+  .catalog-page .catalog-top h1,
+  .content-page > h1,
+  .brand-story-page > h1,
+  .designer-page .designer-hero h1,
+  .custom-flow-page .custom-flow-hero h1 {
+    font-size: clamp(22px, 6.2vw, 28px) !important;
+    line-height: 1.12 !important;
+    letter-spacing: -0.045em !important;
+  }
+}
+
+/* Absolute final footer social buttons: icon-only compact style. */
+.site-footer .footer-socials {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  margin-top: 14px !important;
+}
+
+.site-footer .footer-socials a {
+  display: inline-grid !important;
+  place-items: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+}
+
+.site-footer .footer-socials a small {
+  display: none !important;
+}
+
+.site-footer .footer-socials a > svg {
+  width: 24px !important;
+  height: 24px !important;
+  color: #fff4d8 !important;
+}
+
+@media (max-width: 640px) {
+  .site-footer .footer-socials a {
+    flex-basis: 38px !important;
+    width: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+
+  .site-footer .footer-socials a > svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+}
+
+/* Absolute final homepage FAQ block centering. */
+main > .faq-page {
+  box-sizing: border-box !important;
+  width: min(1120px, calc(100% - 40px)) !important;
+  max-width: 1120px !important;
+  margin: 0 auto !important;
+  padding: clamp(48px, 6vw, 76px) 0 !important;
+  background: #fff !important;
+}
+
+main > .faq-page h1,
+main > .faq-page .faq-list {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+main > .faq-page .faq-list {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+main > .faq-page .faq-list,
+main > .faq-page .faq-list details,
+main > .faq-page .faq-list summary,
+main > .faq-page .faq-list details p {
+  text-align: center !important;
+}
+
+main > .faq-page .faq-list summary {
+  justify-content: center !important;
+  position: relative !important;
+}
+
+main > .faq-page .faq-list summary svg {
+  position: absolute !important;
+  right: 8px !important;
+}
+
+main > .faq-page .faq-list details p {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+@media (max-width: 640px) {
+  main > .faq-page {
+    width: min(100% - 28px, 1120px) !important;
+    padding: 40px 0 !important;
+  }
+}
+
+/* Absolute final footer copyright row. */
+.site-footer .footer-copyright {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  margin: 18px 0 0 !important;
+  padding-top: 14px !important;
+  border-top: 1px solid rgba(241, 210, 143, 0.16) !important;
+  color: rgba(255, 244, 216, 0.62) !important;
+  font-size: 12px !important;
+  letter-spacing: 0.04em !important;
+  text-align: center !important;
+}
+
+/* Absolute final checkout policy links. */
+.checkout-policy-consent {
+  align-items: flex-start !important;
+  line-height: 1.55 !important;
+}
+
+.checkout-policy-consent input {
+  margin-top: 3px !important;
+}
+
+.inline-policy-link {
+  border: 0 !important;
+  background: transparent !important;
+  color: #9c762f !important;
+  cursor: pointer !important;
+  display: inline !important;
+  font: inherit !important;
+  font-weight: 800 !important;
+  padding: 0 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 3px !important;
+}
+
+.inline-policy-link:hover {
+  color: #1c1712 !important;
+}
+
+/* Absolute final legal policy page readability. */
+.legal-content-page .content-card-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 14px !important;
+  max-width: 980px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.legal-content-page .content-card {
+  text-align: left !important;
+  padding: clamp(18px, 2vw, 26px) !important;
+}
+
+.legal-content-page .content-card h3 {
+  font-size: 18px !important;
+  letter-spacing: 0.01em !important;
+}
+
+.legal-content-page .content-card p {
+  font-size: 15px !important;
+  line-height: 1.75 !important;
+}
+
+/* Absolute final footer structure fix. */
+.site-footer {
+  display: grid !important;
+  grid-template-columns: minmax(280px, 1fr) minmax(420px, 0.95fr) !important;
+  align-items: start !important;
+  column-gap: clamp(36px, 7vw, 120px) !important;
+  row-gap: 22px !important;
+  padding: 34px clamp(22px, 5vw, 70px) 24px !important;
+}
+
+.site-footer .footer-brand-block,
+.site-footer .footer-links-block {
+  min-width: 0 !important;
+}
+
+.site-footer .footer-brand-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-bottom: 12px !important;
+}
+
+.site-footer .footer-brand-row strong {
+  color: #ffffff !important;
+  font-size: 16px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+}
+
+.site-footer .footer-brand-mark {
+  flex: 0 0 38px !important;
+  width: 38px !important;
+  height: 38px !important;
+}
+
+.site-footer .footer-links-block {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px 32px !important;
+  justify-items: start !important;
+  align-items: start !important;
+}
+
+.site-footer .footer-links-block .footer-note,
+.site-footer .footer-links-block .footer-link,
+.site-footer .footer-links-block > span:not(.footer-note) {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  white-space: normal !important;
+  line-height: 1.35 !important;
+}
+
+.site-footer .footer-links-block .footer-note {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.site-footer .footer-links-block .footer-link {
+  color: #fff4d8 !important;
+  font-weight: 760 !important;
+}
+
+.site-footer .footer-links-block .footer-link:hover {
+  color: #d4b886 !important;
+}
+
+@media (max-width: 820px) {
+  .site-footer {
+    grid-template-columns: 1fr !important;
+    gap: 26px !important;
+  }
+
+  .site-footer .footer-links-block {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
   }
 }

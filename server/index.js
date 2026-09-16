@@ -30,7 +30,7 @@ const paypalClientSecret = process.env.PAYPAL_CLIENT_SECRET || "";
 const paypalWebhookId = process.env.PAYPAL_WEBHOOK_ID || "";
 const paypalMode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase();
 const paypalApiBase = paypalMode === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
-const siteUrl = (process.env.SITE_URL || "https://everastone.com").replace(/\/$/, "");
+const siteUrl = (process.env.SITE_URL || "https://www.everastone.com").replace(/\/$/, "");
 
 const allowedShapes = new Set(["round", "emerald", "pear", "asscher", "princess", "oval", "heart", "marquise", "radiant"]);
 const allowedCategories = new Set(["engagement", "jewelry", "couple", "wedding", "designer"]);
@@ -199,7 +199,14 @@ function buildSitemapXml(blogPosts = []) {
     { loc: "/designer-styles", priority: "0.8", changefreq: "monthly" },
     { loc: "/custom-ring", priority: "0.8", changefreq: "monthly" },
     { loc: "/brand-story", priority: "0.7", changefreq: "monthly" },
-    { loc: "/blog", priority: "0.7", changefreq: "weekly" }
+    { loc: "/blog", priority: "0.7", changefreq: "weekly" },
+    { loc: "/shipping-policy", priority: "0.5", changefreq: "yearly" },
+    { loc: "/payment-terms", priority: "0.5", changefreq: "yearly" },
+    { loc: "/returns-policy", priority: "0.5", changefreq: "yearly" },
+    { loc: "/warranty-policy", priority: "0.5", changefreq: "yearly" },
+    { loc: "/terms-of-service", priority: "0.5", changefreq: "yearly" },
+    { loc: "/privacy", priority: "0.5", changefreq: "yearly" },
+    { loc: "/ring-size-guide", priority: "0.6", changefreq: "monthly" }
   ];
   const blogUrls = blogPosts
     .filter((post) => post.status !== "draft")
@@ -639,6 +646,17 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/sitemap.xml", async (_req, res) => {
+  let posts = defaultBlogPosts;
+  try {
+    const rows = await supabaseRequest("/blog_posts?status=eq.published&select=*&order=updated_at.desc", { admin: false });
+    if (Array.isArray(rows) && rows.length) posts = rows.map(rowToBlogPost);
+  } catch (error) {
+    console.warn("Dynamic sitemap fell back to default blog posts:", error.message);
+  }
+  res.type("application/xml").send(buildSitemapXml(posts));
+});
+
+app.get("/api/sitemap.xml", async (_req, res) => {
   let posts = defaultBlogPosts;
   try {
     const rows = await supabaseRequest("/blog_posts?status=eq.published&select=*&order=updated_at.desc", { admin: false });

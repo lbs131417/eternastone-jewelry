@@ -1,0 +1,27 @@
+{
+  "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/admin", "destination": "/index.html" },
+    { "source": "/account", "destination": "/index.html" },
+    { "source": "/cart", "destination": "/index.html" },
+    { "source": "/diamonds", "destination": "/index.html" },
+    { "source": "/couple-rings", "destination": "/index.html" },
+    { "source": "/designer-styles", "destination": "/index.html" },
+    { "source": "/custom-ring", "destination": "/index.html" },
+    { "source": "/custom-ring/:path*", "destination": "/index.html" },
+    { "source": "/brand-story", "destination": "/index.html" },
+    { "source": "/ring-size-guide", "destination": "/index.html" },
+    { "source": "/blog", "destination": "/index.html" },
+    { "source": "/blog/:slug", "destination": "/index.html" },
+    { "source": "/couple-rings/:path*", "destination": "/index.html" },
+    { "source": "/collection/:path*", "destination": "/index.html" },
+    { "source": "/product/:id", "destination": "/index.html" },
+    { "source": "/checkout", "destination": "/index.html" },
+    { "source": "/shipping-policy", "destination": "/index.html" },
+    { "source": "/payment-terms", "destination": "/index.html" },
+    { "source": "/returns-policy", "destination": "/index.html" },
+    { "source": "/warranty-policy", "destination": "/index.html" },
+    { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/terms-of-service", "destination": "/index.html" }
+  ]
+}
