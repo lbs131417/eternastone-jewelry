@@ -321,6 +321,27 @@ const getMaterialPurity = (material = "", purity = "") => {
   if (match) return match[0].toUpperCase();
   return "18K";
 };
+const getVariantPriceFromBase = (basePrice = 0, variant = {}) => {
+  const base = Number(basePrice) || 0;
+  const carat = Number(variant.carat) || 1;
+  const material = getMainMaterial(variant.material);
+  const purity = getMaterialPurity(material, variant.purity);
+  const caratAdjustment = Math.max(0, carat - 1) * 530;
+  const purityAdjustment = material === "Platinum"
+    ? 610
+    : purity === "18K"
+      ? 790
+      : purity === "14K"
+        ? 410
+        : 0;
+  return Math.max(0, Math.round(base + caratAdjustment + purityAdjustment));
+};
+const applyVariantPricing = (variants = [], basePrice = 0) => variants.map((variant) => ({
+  ...variant,
+  material: getMainMaterial(variant.material),
+  purity: getMaterialPurity(variant.material, variant.purity),
+  price: String(getVariantPriceFromBase(basePrice, variant))
+}));
 const normalizeProductVariant = (variant = {}, fallbackMaterial = "White Gold", fallbackPrice = 0) => ({
   carat: String(variant.carat ?? "1.00"),
   material: getMainMaterial(variant.material ?? fallbackMaterial),
@@ -3088,10 +3109,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     materialImages: { whiteGold: [], roseGold: [], yellowGold: [] },
     videoUrls: [],
     variants: [
-      { carat: "1.00", material: "Yellow Gold", purity: "18K", price: "1880", stock: "8" },
-      { carat: "1.00", material: "White Gold", purity: "18K", price: "2280", stock: "8" },
-      { carat: "1.00", material: "Platinum", purity: "Pure Platinum", price: "2680", stock: "8" },
-      { carat: "1.00", material: "Rose Gold", purity: "18K", price: "3980", stock: "8" }
+      { carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: "8" }
     ]
   };
   const productCategories = [
@@ -3218,6 +3236,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     const category = getProductCategory(product);
     const sourceSku = product.sku || product.id || category.toUpperCase();
     const copySku = `${sourceSku}-COPY-${Date.now().toString(36).toUpperCase()}`;
+    const basePrice = String(product.price ?? "");
     setProductTab(category);
     setEditingProductId(null);
     setViewingProduct(null);
@@ -3226,7 +3245,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       id: copySku,
       sku: copySku,
       category,
-      price: String(product.price ?? ""),
+      price: basePrice,
       stock: String(product.stock ?? ""),
       images: [...(product.images ?? [])],
       materialImages: {
@@ -3235,11 +3254,10 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         yellowGold: [...(product.materialImages?.yellowGold ?? [])]
       },
       videoUrls: [...(product.videoUrls ?? [])],
-      variants: (product.variants?.length ? product.variants : emptyProductDraft.variants).map((variant) => ({
+      variants: applyVariantPricing((product.variants?.length ? product.variants : emptyProductDraft.variants).map((variant) => ({
         ...normalizeProductVariant(variant, product.material, product.price),
-        price: String(variant.price ?? product.price ?? ""),
         stock: String(variant.stock ?? product.stock ?? "1")
-      }))
+      })), basePrice)
     });
     setApiNotice(`已复制商品「${product.sku || product.name}」，请确认新 SKU、价格和库存后保存。`);
     setProductModal("add");
@@ -3289,9 +3307,13 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     });
   };
   const saveProduct = async () => {
+    if (!Number(productDraft.price)) {
+      setApiNotice("商品未保存：请先填写基础商品价格。基础规格为 1ct / 10K White Gold。");
+      return;
+    }
     const materialImages = productDraft.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] };
     const allMaterialImages = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).filter(Boolean);
-    const normalizedVariants = (productDraft.variants ?? []).map((variant) => ({
+    const normalizedVariants = applyVariantPricing(productDraft.variants ?? [], productDraft.price).map((variant) => ({
       ...normalizeProductVariant(variant, productDraft.variants?.[0]?.material || "White Gold", productDraft.price),
       price: Number(variant.price) || 0,
       stock: Math.max(0, Math.round(Number(variant.stock) || 0))
@@ -3423,24 +3445,37 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   };
   const addVideoUrl = () => setProductDraft((current) => ({ ...current, videoUrls: [...(current.videoUrls ?? []), ""] }));
   const removeVideoUrl = (index) => setProductDraft((current) => ({ ...current, videoUrls: (current.videoUrls ?? []).filter((_, urlIndex) => urlIndex !== index) }));
+  const updateBaseVariantPrice = (basePrice) => {
+    setProductDraft((current) => ({
+      ...current,
+      price: basePrice,
+      variants: applyVariantPricing(current.variants ?? [], basePrice)
+    }));
+  };
   const updateVariant = (index, key, value) => {
     setProductDraft((current) => ({
       ...current,
       variants: (current.variants ?? []).map((variant, variantIndex) => {
         if (variantIndex !== index) return variant;
+        let nextVariant = variant;
         if (key === "material") {
           const options = getPurityOptionsForMaterial(value);
           const nextPurity = options.includes(variant.purity) ? variant.purity : options[0];
-          return { ...variant, material: value, purity: nextPurity };
+          nextVariant = { ...variant, material: value, purity: nextPurity };
+        } else if (key !== "price") {
+          nextVariant = { ...variant, [key]: value };
         }
-        return { ...variant, [key]: value };
+        return { ...nextVariant, price: String(getVariantPriceFromBase(current.price, nextVariant)) };
       })
     }));
   };
   const addVariant = () => {
     setProductDraft((current) => ({
       ...current,
-      variants: [...(current.variants ?? []), { carat: variantCaratOptions.includes(String(current.carat)) ? String(current.carat) : "1.00", material: current.variants?.[0]?.material || "Yellow Gold", purity: getPurityOptionsForMaterial(current.variants?.[0]?.material || "Yellow Gold")[0], price: current.price || "0", stock: current.stock || "1" }]
+      variants: [
+        ...(current.variants ?? []),
+        ...applyVariantPricing([{ carat: variantCaratOptions.includes(String(current.carat)) ? String(current.carat) : "1.00", material: current.variants?.[0]?.material || "White Gold", purity: getPurityOptionsForMaterial(current.variants?.[0]?.material || "White Gold")[0], price: "", stock: current.stock || "1" }], current.price)
+      ]
     }));
   };
   const addVariantCaratGroup = () => {
@@ -3451,7 +3486,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         ...current,
         variants: [
           ...(current.variants ?? []),
-          { carat: nextCarat, material: "Yellow Gold", purity: "18K", price: "0", stock: current.stock || "1" }
+          ...applyVariantPricing([{ carat: nextCarat, material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price)
         ]
       };
     });
@@ -3466,7 +3501,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         ...current,
         variants: [
           ...variants,
-          { carat, material: nextMaterial, purity: getPurityOptionsForMaterial(nextMaterial)[0], price: "0", stock: current.stock || "1" }
+          ...applyVariantPricing([{ carat, material: nextMaterial, purity: getPurityOptionsForMaterial(nextMaterial)[0], price: "", stock: current.stock || "1" }], current.price)
         ]
       };
     });
@@ -3478,7 +3513,8 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         if (String(variant.carat) !== String(carat) || getMainMaterial(variant.material) !== oldMaterial) return variant;
         const options = getPurityOptionsForMaterial(nextMaterial);
         const nextPurity = options.includes(variant.purity) ? variant.purity : options[0];
-        return { ...variant, material: nextMaterial, purity: nextPurity };
+        const nextVariant = { ...variant, material: nextMaterial, purity: nextPurity };
+        return { ...nextVariant, price: String(getVariantPriceFromBase(current.price, nextVariant)) };
       })
     }));
   };
@@ -3493,7 +3529,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         ...current,
         variants: [
           ...variants,
-          { carat, material, purity: nextPurity, price: "0", stock: current.stock || "1" }
+          ...applyVariantPricing([{ carat, material, purity: nextPurity, price: "", stock: current.stock || "1" }], current.price)
         ]
       };
     });
@@ -3501,19 +3537,23 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const removeVariantMaterialGroup = (carat, material) => {
     setProductDraft((current) => {
       const nextVariants = (current.variants ?? []).filter((variant) => !(String(variant.carat) === String(carat) && getMainMaterial(variant.material) === material));
-      return { ...current, variants: nextVariants.length ? nextVariants : [{ carat: "1.00", material: "Yellow Gold", purity: "18K", price: "0", stock: current.stock || "1" }] };
+      return { ...current, variants: nextVariants.length ? nextVariants : applyVariantPricing([{ carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price) };
     });
   };
   const updateVariantCaratGroup = (oldCarat, nextCarat) => {
     setProductDraft((current) => ({
       ...current,
-      variants: (current.variants ?? []).map((variant) => String(variant.carat) === String(oldCarat) ? { ...variant, carat: nextCarat } : variant)
+      variants: (current.variants ?? []).map((variant) => {
+        if (String(variant.carat) !== String(oldCarat)) return variant;
+        const nextVariant = { ...variant, carat: nextCarat };
+        return { ...nextVariant, price: String(getVariantPriceFromBase(current.price, nextVariant)) };
+      })
     }));
   };
   const removeVariantCaratGroup = (carat) => {
     setProductDraft((current) => {
       const nextVariants = (current.variants ?? []).filter((variant) => String(variant.carat) !== String(carat));
-      return { ...current, variants: nextVariants.length ? nextVariants : [{ carat: "1.00", material: "Yellow Gold", purity: "18K", price: "0", stock: current.stock || "1" }] };
+      return { ...current, variants: nextVariants.length ? nextVariants : applyVariantPricing([{ carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price) };
     });
   };
   const groupedVariants = (productDraft.variants ?? []).reduce((groups, variant, index) => {
@@ -3921,9 +3961,10 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <div className="variant-editor-head">
                               <div>
                                 <h4>多规格价格与库存</h4>
-                                <p>先添加主石克拉组，再在该克拉下配置不同戒托金属、纯度、价格与库存；保存时会自动生成前台可选规格。</p>
+                                <p>只需填写基础商品价格（1ct / 10K White Gold），系统会按克拉、戒托材质和纯度自动计算已选择规格价格。</p>
                               </div>
                               <div className="variant-editor-actions">
+                                <label><span>基础商品价格 USD</span><input type="number" min="0" step="1" value={productDraft.price} onChange={(event) => updateBaseVariantPrice(event.target.value)} placeholder="例如：2480" /></label>
                                 <label><span>统一库存</span><input value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: event.target.value })} placeholder="例如：8" /></label>
                                 <button className="ghost-btn" onClick={() => applyVariantStockToAll(productDraft.stock || "0")}>应用到全部规格</button>
                                 <button className="ghost-btn" onClick={addVariantCaratGroup}>添加克拉组</button>
@@ -3950,7 +3991,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                                     {materialGroup.items.map(({ variant, index }) => (
                                       <div className="variant-row grouped purity-row" key={`${group.carat}-${materialGroup.material}-${index}`}>
                                         <label><span>材质纯度</span><select value={getPurityOptionsForMaterial(materialGroup.material).includes(variant.purity ?? getMaterialPurity(variant.material)) ? variant.purity ?? getMaterialPurity(variant.material) : getPurityOptionsForMaterial(materialGroup.material)[0]} onChange={(event) => updateVariant(index, "purity", event.target.value)}>{getPurityOptionsForMaterial(materialGroup.material).map((item) => <option key={item}>{item}</option>)}</select></label>
-                                        <label><span>规格价格 USD</span><input value={variant.price} onChange={(event) => updateVariant(index, "price", event.target.value)} /></label>
+                                        <label><span>自动价格 USD</span><input value={variant.price} readOnly title="由基础商品价格、克拉、材质和纯度自动计算" /></label>
                                         <label><span>规格库存</span><input value={variant.stock ?? ""} onChange={(event) => updateVariant(index, "stock", event.target.value)} /></label>
                                         <button className="ghost-btn" onClick={() => removeVariant(index)} disabled={(productDraft.variants ?? []).length <= 1}>删除纯度</button>
                                       </div>
