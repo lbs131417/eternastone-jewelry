@@ -1234,7 +1234,6 @@ function ProductCard({ product, openProduct, addToCart }) {
         }}
       />
       <div>
-        <span>{product.id}</span>
         <h3>{getProductDisplayName(product)}</h3>
         <p>{Number(product.carat).toFixed(2)} ct · {product.color} Color · {product.clarity} Clarity · {product.certificate}</p>
         <div className="card-price-row">
@@ -2793,8 +2792,7 @@ function Account({ setPage }) {
                   const product = favorite.products ?? {};
                   return (
                     <article className="guest-order-card" key={favorite.id}>
-                      <div><span>Product</span><strong>{product.name || favorite.product_id}</strong></div>
-                      <div><span>SKU</span><strong>{favorite.product_id}</strong></div>
+                      <div><span>Product</span><strong>{product.name || "Saved product"}</strong></div>
                       <div><span>Price</span><strong>{product.price ? money(product.price) : "-"}</strong></div>
                       <div><span>Saved</span><strong>{favorite.created_at ? new Date(favorite.created_at).toLocaleDateString("en-US") : "-"}</strong></div>
                     </article>
