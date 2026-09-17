@@ -75,6 +75,13 @@ alter table public.products add column if not exists sold integer not null defau
 alter table public.products add column if not exists created_at timestamptz not null default now();
 alter table public.products add column if not exists updated_at timestamptz not null default now();
 
+alter table public.products
+  drop constraint if exists products_category_check;
+
+alter table public.products
+  add constraint products_category_check
+  check (category in ('engagement', 'jewelry', 'couple', 'wedding', 'designer'));
+
 update public.products
 set sku = id
 where sku is null or sku = '';

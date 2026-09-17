@@ -12493,3 +12493,104 @@ main > .faq-page .faq-list details p {
     gap: 10px !important;
   }
 }
+
+/* Final grouped variant editor polish. */
+.variant-editor-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: end !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+}
+
+.variant-editor-actions label {
+  display: grid !important;
+  gap: 6px !important;
+  min-width: 120px !important;
+}
+
+.variant-editor-actions label span,
+.variant-carat-head label span,
+.variant-metal-head label span {
+  color: #6d614f !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+}
+
+.variant-carat-group {
+  margin-top: 14px !important;
+  padding: 14px !important;
+  border: 1px solid rgba(212, 184, 134, 0.22) !important;
+  border-radius: 14px !important;
+  background: rgba(255, 250, 240, 0.58) !important;
+}
+
+.variant-carat-head {
+  display: flex !important;
+  align-items: end !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-bottom: 10px !important;
+}
+
+.variant-carat-head label {
+  display: grid !important;
+  gap: 6px !important;
+  min-width: 130px !important;
+}
+
+.variant-carat-head > div {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.variant-metal-group {
+  margin-top: 10px !important;
+  padding: 12px !important;
+  border: 1px solid rgba(212, 184, 134, 0.2) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+.variant-metal-head {
+  display: flex !important;
+  align-items: end !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+.variant-metal-head label {
+  display: grid !important;
+  gap: 6px !important;
+  min-width: 180px !important;
+}
+
+.variant-metal-head > div {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.variant-row.grouped {
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(110px, 0.8fr) 92px !important;
+  padding: 8px 0 !important;
+}
+
+.variant-row.purity-row {
+  border-top: 1px solid rgba(212, 184, 134, 0.12) !important;
+}
+
+@media (max-width: 720px) {
+  .variant-carat-head,
+  .variant-metal-head,
+  .variant-editor-actions {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .variant-row.grouped {
+    grid-template-columns: 1fr !important;
+  }
+}

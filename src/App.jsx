@@ -275,9 +275,10 @@ const materialImageGroups = [
   { key: "roseGold", label: "Rose Gold", keywords: ["玫瑰", "rose"] }
 ];
 const mainMaterials = materialImageGroups.map((group) => group.label);
-const materialPurities = ["10K", "11K", "12K", "13K", "14K", "15K", "16K", "17K", "18K", "Platinum"];
-const goldPurities = materialPurities.filter((purity) => purity !== "Platinum");
-const getPurityOptionsForMaterial = (material = "") => getMainMaterial(material) === "Platinum" ? ["Platinum"] : goldPurities;
+const goldPurities = ["10K", "14K", "18K"];
+const platinumPurities = ["10K", "14K", "18K", "Pure Platinum"];
+const variantCaratOptions = ["1.00", "2.00", "3.00", "4.00", "5.00"];
+const getPurityOptionsForMaterial = (material = "") => getMainMaterial(material) === "Platinum" ? platinumPurities : goldPurities;
 const getMaterialImageGroup = (material = "") => {
   const normalized = String(material).toLowerCase();
   return materialImageGroups.find((group) => group.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())))?.key ?? "whiteGold";
@@ -293,8 +294,9 @@ const getMaterialShortLabel = (materialOrGroup = "") => ({
 }[materialOrGroup] || materialOrGroup);
 const getMaterialPurity = (material = "", purity = "") => {
   const mainMaterial = getMainMaterial(material);
-  if (mainMaterial === "Platinum") return "Platinum";
-  if (purity && !["铂金", "Platinum"].includes(String(purity))) return String(purity);
+  if (purity && !["铂金", "Platinum", "Pure Platinum"].includes(String(purity))) return String(purity);
+  if (purity === "Pure Platinum") return "Pure Platinum";
+  if (mainMaterial === "Platinum") return "Pure Platinum";
   const value = String(material);
   const match = value.match(/1[0-8]K/i);
   if (match) return match[0].toUpperCase();
@@ -3025,9 +3027,9 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     materialImages: { whiteGold: [], roseGold: [], yellowGold: [] },
     videoUrls: [],
     variants: [
-      { carat: "1.00", material: "铂金", purity: "铂金", price: "1880", stock: "8" },
-      { carat: "1.50", material: "黄金", purity: "18K", price: "2680", stock: "8" },
-      { carat: "2.00", material: "玫瑰金", purity: "18K", price: "3980", stock: "8" }
+      { carat: "1.00", material: "Yellow Gold", purity: "18K", price: "1880", stock: "8" },
+      { carat: "1.00", material: "Platinum", purity: "Pure Platinum", price: "2680", stock: "8" },
+      { carat: "1.00", material: "Rose Gold", purity: "18K", price: "3980", stock: "8" }
     ]
   };
   const productCategories = [
@@ -3330,9 +3332,10 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       variants: (current.variants ?? []).map((variant, variantIndex) => {
         if (variantIndex !== index) return variant;
         if (key === "material") {
-          return { ...variant, material: value, purity: value === "铂金" ? "铂金" : variant.purity === "铂金" ? "18K" : variant.purity };
+          const options = getPurityOptionsForMaterial(value);
+          const nextPurity = options.includes(variant.purity) ? variant.purity : options[0];
+          return { ...variant, material: value, purity: nextPurity };
         }
-        if (key === "purity" && value === "铂金") return { ...variant, purity: value, material: "铂金" };
         return { ...variant, [key]: value };
       })
     }));
@@ -3340,9 +3343,97 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const addVariant = () => {
     setProductDraft((current) => ({
       ...current,
-      variants: [...(current.variants ?? []), { carat: current.carat || "1.00", material: current.variants?.[0]?.material || "Platinum", purity: getMaterialImageGroup(current.variants?.[0]?.material || "Platinum") === "whiteGold" ? "铂金" : "18K", price: current.price || "0", stock: current.stock || "1" }]
+      variants: [...(current.variants ?? []), { carat: variantCaratOptions.includes(String(current.carat)) ? String(current.carat) : "1.00", material: current.variants?.[0]?.material || "Yellow Gold", purity: getPurityOptionsForMaterial(current.variants?.[0]?.material || "Yellow Gold")[0], price: current.price || "0", stock: current.stock || "1" }]
     }));
   };
+  const addVariantCaratGroup = () => {
+    setProductDraft((current) => {
+      const usedCarats = new Set((current.variants ?? []).map((variant) => String(variant.carat)));
+      const nextCarat = variantCaratOptions.find((carat) => !usedCarats.has(carat)) ?? variantCaratOptions[0];
+      return {
+        ...current,
+        variants: [
+          ...(current.variants ?? []),
+          { carat: nextCarat, material: "Yellow Gold", purity: "18K", price: "0", stock: current.stock || "1" }
+        ]
+      };
+    });
+  };
+  const addVariantMetalToCarat = (carat) => {
+    setProductDraft((current) => {
+      const variants = current.variants ?? [];
+      const groupVariants = variants.filter((variant) => String(variant.carat) === String(carat));
+      const usedMaterials = new Set(groupVariants.map((variant) => getMainMaterial(variant.material)));
+      const nextMaterial = mainMaterials.find((material) => !usedMaterials.has(material)) ?? "Yellow Gold";
+      return {
+        ...current,
+        variants: [
+          ...variants,
+          { carat, material: nextMaterial, purity: getPurityOptionsForMaterial(nextMaterial)[0], price: "0", stock: current.stock || "1" }
+        ]
+      };
+    });
+  };
+  const updateVariantMaterialGroup = (carat, oldMaterial, nextMaterial) => {
+    setProductDraft((current) => ({
+      ...current,
+      variants: (current.variants ?? []).map((variant) => {
+        if (String(variant.carat) !== String(carat) || getMainMaterial(variant.material) !== oldMaterial) return variant;
+        const options = getPurityOptionsForMaterial(nextMaterial);
+        const nextPurity = options.includes(variant.purity) ? variant.purity : options[0];
+        return { ...variant, material: nextMaterial, purity: nextPurity };
+      })
+    }));
+  };
+  const addVariantPurityToMaterial = (carat, material) => {
+    setProductDraft((current) => {
+      const variants = current.variants ?? [];
+      const groupVariants = variants.filter((variant) => String(variant.carat) === String(carat) && getMainMaterial(variant.material) === material);
+      const usedPurities = new Set(groupVariants.map((variant) => variant.purity ?? getMaterialPurity(variant.material)));
+      const purityOptions = getPurityOptionsForMaterial(material);
+      const nextPurity = purityOptions.find((purity) => !usedPurities.has(purity)) ?? purityOptions[0];
+      return {
+        ...current,
+        variants: [
+          ...variants,
+          { carat, material, purity: nextPurity, price: "0", stock: current.stock || "1" }
+        ]
+      };
+    });
+  };
+  const removeVariantMaterialGroup = (carat, material) => {
+    setProductDraft((current) => {
+      const nextVariants = (current.variants ?? []).filter((variant) => !(String(variant.carat) === String(carat) && getMainMaterial(variant.material) === material));
+      return { ...current, variants: nextVariants.length ? nextVariants : [{ carat: "1.00", material: "Yellow Gold", purity: "18K", price: "0", stock: current.stock || "1" }] };
+    });
+  };
+  const updateVariantCaratGroup = (oldCarat, nextCarat) => {
+    setProductDraft((current) => ({
+      ...current,
+      variants: (current.variants ?? []).map((variant) => String(variant.carat) === String(oldCarat) ? { ...variant, carat: nextCarat } : variant)
+    }));
+  };
+  const removeVariantCaratGroup = (carat) => {
+    setProductDraft((current) => {
+      const nextVariants = (current.variants ?? []).filter((variant) => String(variant.carat) !== String(carat));
+      return { ...current, variants: nextVariants.length ? nextVariants : [{ carat: "1.00", material: "Yellow Gold", purity: "18K", price: "0", stock: current.stock || "1" }] };
+    });
+  };
+  const groupedVariants = (productDraft.variants ?? []).reduce((groups, variant, index) => {
+    const carat = variantCaratOptions.includes(String(variant.carat)) ? String(variant.carat) : "1.00";
+    const existing = groups.find((group) => group.carat === carat);
+    const targetGroup = existing ?? { carat, items: [], materialGroups: [] };
+    if (!existing) groups.push(targetGroup);
+    targetGroup.items.push({ variant, index });
+    const material = getMainMaterial(variant.material);
+    const existingMaterial = targetGroup.materialGroups.find((group) => group.material === material);
+    if (existingMaterial) existingMaterial.items.push({ variant, index });
+    else targetGroup.materialGroups.push({ material, items: [{ variant, index }] });
+    return groups;
+  }, []).map((group) => ({
+    ...group,
+    materialGroups: group.materialGroups.sort((a, b) => mainMaterials.indexOf(a.material) - mainMaterials.indexOf(b.material))
+  })).sort((a, b) => Number(a.carat) - Number(b.carat));
   const removeVariant = (index) => {
     setProductDraft((current) => ({ ...current, variants: (current.variants ?? []).filter((_, variantIndex) => variantIndex !== index) }));
   };
@@ -3728,23 +3819,43 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <div className="variant-editor-head">
                               <div>
                                 <h4>多规格价格与库存</h4>
-                                <p>用户可在前台选择克拉数、主材质与材质纯度，不同规格分别设置售价和库存；商品列表价格取第一个规格，库存取所有规格总和。</p>
+                                <p>先添加主石克拉组，再在该克拉下配置不同戒托金属、纯度、价格与库存；保存时会自动生成前台可选规格。</p>
                               </div>
                               <div className="variant-editor-actions">
                                 <label><span>统一库存</span><input value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: event.target.value })} placeholder="例如：8" /></label>
                                 <button className="ghost-btn" onClick={() => applyVariantStockToAll(productDraft.stock || "0")}>应用到全部规格</button>
-                                <button className="ghost-btn" onClick={addVariant}>添加规格</button>
+                                <button className="ghost-btn" onClick={addVariantCaratGroup}>添加克拉组</button>
                               </div>
                             </div>
-                            {(productDraft.variants ?? []).map((variant, index) => (
-                              <div className="variant-row" key={index}>
-                                <label><span>克拉数</span><input value={variant.carat} onChange={(event) => updateVariant(index, "carat", event.target.value)} /></label>
-                                <label><span>戒托材质</span><select value={getMainMaterial(variant.material)} onChange={(event) => updateVariant(index, "material", event.target.value)}>{mainMaterials.map((item) => <option key={item}>{item}</option>)}</select></label>
-                                <label><span>材质纯度</span><select value={getPurityOptionsForMaterial(variant.material).includes(variant.purity ?? getMaterialPurity(variant.material)) ? variant.purity ?? getMaterialPurity(variant.material) : getPurityOptionsForMaterial(variant.material)[0]} onChange={(event) => updateVariant(index, "purity", event.target.value)}>{getPurityOptionsForMaterial(variant.material).map((item) => <option key={item}>{item}</option>)}</select></label>
-                                <label><span>规格价格 USD</span><input value={variant.price} onChange={(event) => updateVariant(index, "price", event.target.value)} /></label>
-                                <label><span>规格库存</span><input value={variant.stock ?? ""} onChange={(event) => updateVariant(index, "stock", event.target.value)} /></label>
-                                <button className="ghost-btn" onClick={() => removeVariant(index)} disabled={(productDraft.variants ?? []).length <= 1}>删除</button>
-                              </div>
+                            {groupedVariants.map((group) => (
+                              <section className="variant-carat-group" key={group.carat}>
+                                <div className="variant-carat-head">
+                                  <label><span>主石克拉</span><select value={group.carat} onChange={(event) => updateVariantCaratGroup(group.carat, event.target.value)}>{variantCaratOptions.map((carat) => <option key={carat} value={carat}>{Number(carat).toFixed(0)} ct</option>)}</select></label>
+                                  <div>
+                                    <button className="ghost-btn" onClick={() => addVariantMetalToCarat(group.carat)} disabled={group.materialGroups.length >= mainMaterials.length}>添加戒托材质</button>
+                                    <button className="ghost-btn" onClick={() => removeVariantCaratGroup(group.carat)} disabled={groupedVariants.length <= 1}>删除克拉组</button>
+                                  </div>
+                                </div>
+                                {group.materialGroups.map((materialGroup) => (
+                                  <div className="variant-metal-group" key={`${group.carat}-${materialGroup.material}`}>
+                                    <div className="variant-metal-head">
+                                      <label><span>戒托材质分组</span><select value={materialGroup.material} onChange={(event) => updateVariantMaterialGroup(group.carat, materialGroup.material, event.target.value)}>{mainMaterials.map((item) => <option key={item}>{item}</option>)}</select></label>
+                                      <div>
+                                        <button className="ghost-btn" onClick={() => addVariantPurityToMaterial(group.carat, materialGroup.material)} disabled={materialGroup.items.length >= getPurityOptionsForMaterial(materialGroup.material).length}>添加纯度</button>
+                                        <button className="ghost-btn" onClick={() => removeVariantMaterialGroup(group.carat, materialGroup.material)} disabled={group.materialGroups.length <= 1 && groupedVariants.length <= 1}>删除戒托材质</button>
+                                      </div>
+                                    </div>
+                                    {materialGroup.items.map(({ variant, index }) => (
+                                      <div className="variant-row grouped purity-row" key={`${group.carat}-${materialGroup.material}-${index}`}>
+                                        <label><span>材质纯度</span><select value={getPurityOptionsForMaterial(materialGroup.material).includes(variant.purity ?? getMaterialPurity(variant.material)) ? variant.purity ?? getMaterialPurity(variant.material) : getPurityOptionsForMaterial(materialGroup.material)[0]} onChange={(event) => updateVariant(index, "purity", event.target.value)}>{getPurityOptionsForMaterial(materialGroup.material).map((item) => <option key={item}>{item}</option>)}</select></label>
+                                        <label><span>规格价格 USD</span><input value={variant.price} onChange={(event) => updateVariant(index, "price", event.target.value)} /></label>
+                                        <label><span>规格库存</span><input value={variant.stock ?? ""} onChange={(event) => updateVariant(index, "stock", event.target.value)} /></label>
+                                        <button className="ghost-btn" onClick={() => removeVariant(index)} disabled={(productDraft.variants ?? []).length <= 1}>删除纯度</button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                              </section>
                             ))}
                           </div>
                           <div className="admin-modal-actions">

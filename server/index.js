@@ -72,7 +72,8 @@ async function supabaseRequest(path, { method = "GET", body, admin = false, pref
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const error = new Error(payload?.message || payload?.hint || "Supabase request failed");
+    const detail = [payload?.message, payload?.details, payload?.hint, payload?.code].filter(Boolean).join(" | ");
+    const error = new Error(detail || "Supabase request failed");
     error.status = response.status;
     throw error;
   }
@@ -129,11 +130,13 @@ function normalizeMainMaterial(value = "") {
 
 function normalizePurity(material = "", purity = "") {
   const mainMaterial = normalizeMainMaterial(material);
-  if (mainMaterial === "铂金") return "铂金";
-  const explicitPurity = String(purity || "").toUpperCase();
-  if (/^1[0-8]K$/.test(explicitPurity)) return explicitPurity;
+  const rawPurity = String(purity || "").trim();
+  const explicitPurity = rawPurity.toUpperCase();
+  if (mainMaterial === "铂金" && /PURE|纯/.test(explicitPurity)) return "Pure Platinum";
+  if (/^(10K|14K|18K)$/.test(explicitPurity)) return explicitPurity;
   const materialPurity = String(material || "").toUpperCase().match(/1[0-8]K/);
-  return materialPurity?.[0] || "18K";
+  if (materialPurity && ["10K", "14K", "18K"].includes(materialPurity[0])) return materialPurity[0];
+  return mainMaterial === "铂金" ? "Pure Platinum" : "18K";
 }
 
 function slugify(value = "") {
