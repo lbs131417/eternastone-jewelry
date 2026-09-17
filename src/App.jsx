@@ -52,7 +52,19 @@ const formatArrivalDate = (days = 23) => {
 
 const FRONTEND_PRODUCTS_STORAGE_KEY = "everastone.frontend.products";
 const FRONTEND_PRODUCTS_CACHE_VERSION_KEY = "everastone.frontend.products.cacheVersion";
-const FRONTEND_PRODUCTS_CACHE_VERSION = "db-only-2026-09-17";
+const FRONTEND_PRODUCTS_CACHE_VERSION = "db-only-2026-09-17-seedless-products";
+const DEPRECATED_SEED_PRODUCT_IDS = new Set([
+  "ER-OVAL-001",
+  "JW-NECK-001",
+  "CP-PAIR-001",
+  "WR-BAND-001",
+  "ER-PEAR-002",
+  "ER-EMERALD-003",
+  "JW-EAR-002",
+  "CP-VINTAGE-002",
+  "WR-OVAL-002"
+]);
+const isDeprecatedSeedProduct = (product = {}) => DEPRECATED_SEED_PRODUCT_IDS.has(product.id) || DEPRECATED_SEED_PRODUCT_IDS.has(product.sku);
 const CUSTOMER_SESSION_STORAGE_KEY = "everastone.customer.session";
 const CUSTOMER_PROFILES_STORAGE_KEY = "everastone.customer.profiles";
 const ANALYTICS_SESSION_STORAGE_KEY = "everastone.analytics.sessionId";
@@ -115,7 +127,7 @@ const readSharedFrontendProducts = () => {
       return [];
     }
     const stored = window.localStorage.getItem(FRONTEND_PRODUCTS_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    return stored ? JSON.parse(stored).filter((product) => !isDeprecatedSeedProduct(product)) : [];
   } catch {
     return [];
   }
@@ -261,8 +273,8 @@ const updateSeoMeta = ({ title, description }) => {
   ensureMeta('meta[property="og:type"]', { property: "og:type" }).setAttribute("content", "website");
 };
 const mergeProductsById = (base, additions) => {
-  const merged = new Map(base.map((product) => [product.id, product]));
-  additions.forEach((product) => merged.set(product.id, { ...merged.get(product.id), ...product }));
+  const merged = new Map(base.filter((product) => !isDeprecatedSeedProduct(product)).map((product) => [product.id, product]));
+  additions.filter((product) => !isDeprecatedSeedProduct(product)).forEach((product) => merged.set(product.id, { ...merged.get(product.id), ...product }));
   return Array.from(merged.values());
 };
 
@@ -1097,10 +1109,10 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
   const resetFilters = () =>
     setFilters({
       shape: "",
-      caratMin: 1,
-      caratMax: 7,
-      priceMin: 900,
-      priceMax: 9000,
+      caratMin: 0,
+      caratMax: 5,
+      priceMin: 0,
+      priceMax: 50000,
       color: "",
       clarity: "",
       cut: "",
@@ -1155,24 +1167,24 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
           <div className="filter-block">
             <h3>Carat Weight</h3>
             <div className="range-row">
-              <input type="range" min="1" max="7" step="0.01" value={filters.caratMin} onChange={(event) => setValue("caratMin", Math.min(Number(event.target.value), filters.caratMax))} />
-              <input type="range" min="1" max="7" step="0.01" value={filters.caratMax} onChange={(event) => setValue("caratMax", Math.max(Number(event.target.value), filters.caratMin))} />
+              <input type="range" min="0" max="5" step="0.01" value={filters.caratMin} onChange={(event) => setValue("caratMin", Math.min(Number(event.target.value), filters.caratMax))} />
+              <input type="range" min="0" max="5" step="0.01" value={filters.caratMax} onChange={(event) => setValue("caratMax", Math.max(Number(event.target.value), filters.caratMin))} />
             </div>
             <div className="input-pair">
-              <input type="number" min="1" max="7" step="0.01" value={filters.caratMin} onChange={(event) => setValue("caratMin", Number(event.target.value))} />
-              <input type="number" min="1" max="7" step="0.01" value={filters.caratMax} onChange={(event) => setValue("caratMax", Number(event.target.value))} />
+              <input type="number" min="0" max="5" step="0.01" value={filters.caratMin} onChange={(event) => setValue("caratMin", Number(event.target.value))} />
+              <input type="number" min="0" max="5" step="0.01" value={filters.caratMax} onChange={(event) => setValue("caratMax", Number(event.target.value))} />
             </div>
           </div>
 
           <div className="filter-block">
             <h3>Price Range</h3>
             <div className="range-row">
-              <input type="range" min="900" max="9000" step="50" value={filters.priceMin} onChange={(event) => setValue("priceMin", Math.min(Number(event.target.value), filters.priceMax))} />
-              <input type="range" min="900" max="9000" step="50" value={filters.priceMax} onChange={(event) => setValue("priceMax", Math.max(Number(event.target.value), filters.priceMin))} />
+              <input type="range" min="0" max="50000" step="50" value={filters.priceMin} onChange={(event) => setValue("priceMin", Math.min(Number(event.target.value), filters.priceMax))} />
+              <input type="range" min="0" max="50000" step="50" value={filters.priceMax} onChange={(event) => setValue("priceMax", Math.max(Number(event.target.value), filters.priceMin))} />
             </div>
             <div className="input-pair">
-              <input type="number" min="900" max="9000" value={filters.priceMin} onChange={(event) => setValue("priceMin", Number(event.target.value))} />
-              <input type="number" min="900" max="9000" value={filters.priceMax} onChange={(event) => setValue("priceMax", Number(event.target.value))} />
+              <input type="number" min="0" max="50000" value={filters.priceMin} onChange={(event) => setValue("priceMin", Number(event.target.value))} />
+              <input type="number" min="0" max="50000" value={filters.priceMax} onChange={(event) => setValue("priceMax", Number(event.target.value))} />
             </div>
           </div>
 
@@ -1209,6 +1221,13 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
               <ProductCard product={diamond} openProduct={openProduct} addToCart={addToCart} key={diamond.id} />
             ))}
           </div>
+          {!filtered.length ? (
+            <div className="catalog-empty-state">
+              <strong>No products match the current filters.</strong>
+              <span>If you just added a product in admin, reset filters or check its category, shape, status, and specification price/carat range.</span>
+              <button className="secondary-btn" onClick={resetFilters}>Reset Filters</button>
+            </div>
+          ) : null}
         </section>
       </section>
     </main>
@@ -3082,25 +3101,9 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     { key: "designer", label: "设计师款式" }
   ];
   const [productDraft, setProductDraft] = useState({
-    ...emptyProductDraft,
-    name: "椭圆形培育钻石求婚戒指",
-    sku: "ER-OVAL-001",
-    price: "3280",
-    stock: "8",
-    shape: "oval",
-    carat: "2.00"
+    ...emptyProductDraft
   });
-  const [productCatalog, setProductCatalog] = useState([
-    { id: "ER-OVAL-001", category: "engagement", name: "椭圆形培育钻石求婚戒指", sku: "ER-OVAL-001", price: 3280, stock: 8, material: "18K 白金", mainStone: "培育钻石", shape: "oval", carat: "2.00", color: "E", clarity: "VS1", cut: "Excellent", certificate: "IGI", polish: "Excellent", symmetry: "Excellent", depth: "61.8%", table: "58%", ratio: "1.42", fluorescence: "None", size: "US 6 / UK L", status: "上架", images: [shapes.find((shape) => shape.key === "oval")?.image], variants: [{ carat: "1.50", material: "14K 白金", price: "2480" }, { carat: "2.00", material: "18K 白金", price: "3280" }, { carat: "2.50", material: "铂金", price: "4680" }] },
-    { id: "JW-NECK-001", category: "jewelry", name: "日常轻奢培育钻石项链", sku: "JW-NECK-001", price: 880, stock: 16, material: "14K 黄金", mainStone: "培育钻石", shape: "round", carat: "0.50", color: "F", clarity: "VS2", cut: "Excellent", certificate: "IGI", polish: "Excellent", symmetry: "Excellent", depth: "62.0%", table: "58%", ratio: "1.00", fluorescence: "None", size: "可调节链长", status: "上架", images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.30", material: "14K 黄金", price: "680" }, { carat: "0.50", material: "14K 黄金", price: "880" }, { carat: "0.80", material: "18K 黄金", price: "1280" }] },
-    { id: "CP-PAIR-001", category: "couple", name: "极简窄款培育钻石对戒", sku: "CP-PAIR-001", price: 1260, stock: 12, material: "铂金", mainStone: "小颗培育钻石", shape: "round", carat: "0.20", color: "G", clarity: "VS1", cut: "Excellent", certificate: "IGI", polish: "Excellent", symmetry: "Very Good", depth: "62.1%", table: "57%", ratio: "1.00", fluorescence: "Faint", size: "男戒/女戒可选", status: "上架", images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.10", material: "18K 白金", price: "980" }, { carat: "0.20", material: "铂金", price: "1260" }, { carat: "0.35", material: "铂金", price: "1680" }] },
-    { id: "WR-BAND-001", category: "wedding", name: "结婚纪念培育钻石婚戒", sku: "WR-BAND-001", price: 1680, stock: 10, material: "18K 玫瑰金", mainStone: "培育钻石", shape: "princess", carat: "0.80", color: "F", clarity: "VS2", cut: "Very Good", certificate: "GIA", polish: "Excellent", symmetry: "Very Good", depth: "69.1%", table: "70%", ratio: "1.01", fluorescence: "Medium", size: "US/UK 尺码", status: "上架", images: [shapes.find((shape) => shape.key === "princess")?.image], variants: [{ carat: "0.50", material: "18K 玫瑰金", price: "1280" }, { carat: "0.80", material: "18K 玫瑰金", price: "1680" }, { carat: "1.20", material: "铂金", price: "2380" }] },
-    { id: "ER-PEAR-002", category: "engagement", name: "水滴形光环培育钻石求婚戒指", sku: "ER-PEAR-002", price: 3950, stock: 6, material: "18K 白金", mainStone: "培育钻石", shape: "pear", carat: "2.50", color: "F", clarity: "VS2", cut: "Very Good", certificate: "IGI", polish: "Excellent", symmetry: "Very Good", depth: "63.4%", table: "59%", ratio: "1.58", fluorescence: "None", size: "US 5-9 / UK J-R", status: "上架", images: [shapes.find((shape) => shape.key === "pear")?.image], variants: [{ carat: "2.00", material: "14K 白金", price: "3180" }, { carat: "2.50", material: "18K 白金", price: "3950" }, { carat: "3.00", material: "铂金", price: "5480" }] },
-    { id: "ER-EMERALD-003", category: "engagement", name: "祖母绿形三石培育钻石求婚戒指", sku: "ER-EMERALD-003", price: 5120, stock: 4, material: "铂金", mainStone: "培育钻石", shape: "emerald", carat: "3.00", color: "G", clarity: "VS1", cut: "Excellent", certificate: "GIA", polish: "Very Good", symmetry: "Excellent", depth: "64.0%", table: "62%", ratio: "1.39", fluorescence: "None", size: "US 5-9 / UK J-R", status: "上架", images: [shapes.find((shape) => shape.key === "emerald")?.image], variants: [{ carat: "2.00", material: "18K 白金", price: "3680" }, { carat: "3.00", material: "铂金", price: "5120" }, { carat: "4.00", material: "铂金", price: "6980" }] },
-    { id: "JW-EAR-002", category: "jewelry", name: "圆形培育钻石耳钉", sku: "JW-EAR-002", price: 1180, stock: 22, material: "18K 白金", mainStone: "培育钻石", shape: "round", carat: "1.00", color: "E", clarity: "VS1", cut: "Excellent", certificate: "IGI", polish: "Excellent", symmetry: "Excellent", depth: "62.1%", table: "57%", ratio: "1.00", fluorescence: "Faint", size: "耳针款", status: "上架", images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.50", material: "14K 白金", price: "780" }, { carat: "1.00", material: "18K 白金", price: "1180" }, { carat: "1.50", material: "铂金", price: "1880" }] },
-    { id: "CP-VINTAGE-002", category: "couple", name: "复古雕花培育钻石情侣对戒", sku: "CP-VINTAGE-002", price: 1580, stock: 7, material: "18K 黄金", mainStone: "培育钻石", shape: "round", carat: "0.30", color: "G", clarity: "VS2", cut: "Excellent", certificate: "IGI", polish: "Excellent", symmetry: "Excellent", depth: "62.0%", table: "58%", ratio: "1.00", fluorescence: "None", size: "男女戒可选", status: "上架", images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.20", material: "18K 黄金", price: "1280" }, { carat: "0.30", material: "18K 黄金", price: "1580" }, { carat: "0.50", material: "铂金", price: "2180" }] },
-    { id: "WR-OVAL-002", category: "wedding", name: "椭圆形排镶培育钻石结婚戒指", sku: "WR-OVAL-002", price: 2280, stock: 5, material: "18K 白金", mainStone: "培育钻石", shape: "oval", carat: "1.20", color: "E", clarity: "VS2", cut: "Excellent", certificate: "IGI", polish: "Excellent", symmetry: "Excellent", depth: "61.5%", table: "58%", ratio: "1.36", fluorescence: "None", size: "US/UK 尺码", status: "上架", images: [shapes.find((shape) => shape.key === "oval")?.image], variants: [{ carat: "0.80", material: "14K 白金", price: "1680" }, { carat: "1.20", material: "18K 白金", price: "2280" }, { carat: "1.80", material: "铂金", price: "3280" }] }
-  ]);
+  const [productCatalog, setProductCatalog] = useState([]);
   const totalPrice = Math.round((Number(draft.carat) || 0) * (Number(draft.pricePerCarat) || 0));
   const adminModules = [
     { key: "products", title: "商品管理", desc: "裸钻、钻戒、首饰、回收站、操作日志" },
@@ -3896,7 +3899,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                           <div className="admin-form simple-product-form modal-product-form">
                             <h4>基础信息</h4>
                             <label><span>商品名称</span><input value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value, imageAlt: event.target.value })} placeholder="例如：椭圆形培育钻石求婚戒指" /></label>
-                            <label><span>SKU 编码</span><input value={productDraft.sku} onChange={(event) => setProductDraft({ ...productDraft, sku: event.target.value })} placeholder="例如：ER-OVAL-001" /></label>
+                            <label><span>SKU 编码</span><input value={productDraft.sku} onChange={(event) => setProductDraft({ ...productDraft, sku: event.target.value })} placeholder="例如：EV-RING-001" /></label>
                             <label className="wide"><span>商品简介</span><textarea value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} placeholder="介绍戒指设计、主钻比例、戒托工艺、适合场景等" /></label>
                             <label className="wide"><span>商品图文字提示</span><input value={productDraft.imageCaption} onChange={(event) => setProductDraft({ ...productDraft, imageCaption: event.target.value })} placeholder="例如：上传图片为 2.00ct 椭圆形实物图" /></label>
                             <label className="wide"><span>商品图片 title="" 属性</span><input value={productDraft.imageTitle ?? ""} onChange={(event) => setProductDraft({ ...productDraft, imageTitle: event.target.value })} placeholder="例如：2.00ct Oval Lab-Grown Diamond Engagement Ring" /></label>
@@ -4425,10 +4428,10 @@ function SupportChatWidget() {
 
 const initialFilters = {
   shape: "",
-  caratMin: 1,
-  caratMax: 7,
-  priceMin: 900,
-  priceMax: 9000,
+  caratMin: 0,
+  caratMax: 5,
+  priceMin: 0,
+  priceMax: 50000,
   color: "",
   clarity: "",
   cut: "",
@@ -4444,13 +4447,7 @@ const initialFilters = {
   sort: "popular"
 };
 
-const adminSeedProducts = [
-  { id: "ER-PEAR-002", shape: "pear", carat: 2, color: "F", clarity: "VS2", cut: "Very Good", polish: "Excellent", symmetry: "Very Good", certificate: "IGI", fluorescence: "None", depth: "63.4%", table: "59%", ratio: "1.58", price: 3180, image: shapes.find((shape) => shape.key === "pear")?.image, images: [shapes.find((shape) => shape.key === "pear")?.image], variants: [{ carat: "2.00", material: "14K 白金", price: 3180 }, { carat: "2.50", material: "18K 白金", price: 3950 }, { carat: "3.00", material: "铂金", price: 5480 }], fast: true, realPhoto: true, createdAt: 25, sold: 34 },
-  { id: "ER-EMERALD-003", shape: "emerald", carat: 2, color: "G", clarity: "VS1", cut: "Excellent", polish: "Very Good", symmetry: "Excellent", certificate: "GIA", fluorescence: "None", depth: "64.0%", table: "62%", ratio: "1.39", price: 3680, image: shapes.find((shape) => shape.key === "emerald")?.image, images: [shapes.find((shape) => shape.key === "emerald")?.image], variants: [{ carat: "2.00", material: "18K 白金", price: 3680 }, { carat: "3.00", material: "铂金", price: 5120 }, { carat: "4.00", material: "铂金", price: 6980 }], fast: true, realPhoto: true, createdAt: 24, sold: 28 },
-  { id: "JW-EAR-002", shape: "round", carat: 0.5, color: "F", clarity: "VS2", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "IGI", fluorescence: "Faint", depth: "62.1%", table: "57%", ratio: "1.00", price: 780, image: shapes.find((shape) => shape.key === "round")?.image, images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.50", material: "14K 白金", price: 780 }, { carat: "1.00", material: "18K 白金", price: 1180 }, { carat: "1.50", material: "铂金", price: 1880 }], fast: true, realPhoto: true, createdAt: 23, sold: 42 },
-  { id: "CP-VINTAGE-002", shape: "round", carat: 0.2, color: "G", clarity: "VS2", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "IGI", fluorescence: "None", depth: "62.0%", table: "58%", ratio: "1.00", price: 1280, image: shapes.find((shape) => shape.key === "round")?.image, images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.20", material: "18K 黄金", price: 1280 }, { carat: "0.30", material: "18K 黄金", price: 1580 }, { carat: "0.50", material: "铂金", price: 2180 }], fast: true, realPhoto: true, createdAt: 22, sold: 21 },
-  { id: "WR-OVAL-002", shape: "oval", carat: 0.8, color: "F", clarity: "VS2", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "IGI", fluorescence: "None", depth: "61.5%", table: "58%", ratio: "1.36", price: 1680, image: shapes.find((shape) => shape.key === "oval")?.image, images: [shapes.find((shape) => shape.key === "oval")?.image], variants: [{ carat: "0.80", material: "14K 白金", price: 1680 }, { carat: "1.20", material: "18K 白金", price: 2280 }, { carat: "1.80", material: "铂金", price: 3280 }], fast: true, realPhoto: true, createdAt: 21, sold: 19 }
-];
+const adminSeedProducts = [];
 
 const categorySeedProducts = [
   { id: "CP-CLASSIC-101", category: "couple", name: "经典素圈情侣对戒", shape: "round", carat: 0.1, color: "G", clarity: "VS1", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "IGI", fluorescence: "None", depth: "62.0%", table: "58%", ratio: "1.00", price: 980, image: shapes.find((shape) => shape.key === "round")?.image, images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.10", material: "18K 白金", price: 980 }, { carat: "0.20", material: "铂金", price: 1280 }, { carat: "0.30", material: "18K 黄金", price: 1580 }], fast: true, realPhoto: true, createdAt: 31, sold: 66 },

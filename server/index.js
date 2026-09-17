@@ -335,7 +335,7 @@ function rowToProduct(row = {}) {
     stock: Number(row.stock) || 0,
     material: row.material,
     mainStone: row.main_stone,
-    shape: row.shape,
+    shape: allowedShapes.has(row.shape) ? row.shape : "round",
     carat: Number(row.carat) || 1,
     color: row.color,
     clarity: row.clarity,
@@ -682,7 +682,7 @@ app.get("/api/sitemap.xml", async (_req, res) => {
 app.get("/api/products", async (_req, res, next) => {
   try {
     const rows = await supabaseRequest("/products?select=*&order=created_at.desc", { admin: false });
-    res.json({ data: rows.filter((row) => allowedShapes.has(row.shape)).map(rowToProduct) });
+    res.json({ data: rows.map(rowToProduct) });
   } catch (error) {
     next(error);
   }

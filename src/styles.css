@@ -6780,6 +6780,29 @@ textarea {
   height: 100%;
 }
 
+.catalog-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: 24px 0;
+  padding: 28px;
+  border: 1px solid rgba(199, 173, 120, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 250, 240, 0.72);
+  color: #5f5549;
+  text-align: center;
+}
+
+.catalog-empty-state strong {
+  color: #1a1714;
+  font-size: 18px;
+}
+
+.catalog-empty-state span {
+  max-width: 680px;
+  line-height: 1.65;
+}
+
 .card-material-swatches {
   display: flex;
   align-items: center;
