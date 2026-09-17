@@ -304,7 +304,8 @@ const normalizeProductVariant = (variant = {}, fallbackMaterial = "Platinum", fa
   carat: String(variant.carat ?? "1.00"),
   material: getMainMaterial(variant.material ?? fallbackMaterial),
   purity: getMaterialPurity(variant.material ?? fallbackMaterial, variant.purity),
-  price: variant.price ?? fallbackPrice
+  price: variant.price ?? fallbackPrice,
+  stock: variant.stock ?? "1"
 });
 const orderStatusLabel = (value = "") => ({
   "待付款": "Pending payment",
@@ -332,14 +333,15 @@ const getPrimaryProductImage = (product = {}) => {
   const firstMaterialImage = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).find(Boolean);
   return firstMaterialImage || product.images?.[0] || product.image || shapes.find((shape) => shape.key === product.shape)?.image;
 };
-const storefrontProductCategories = new Set(["engagement", "jewelry", "couple", "wedding", "designer"]);
+const storefrontProductCategories = new Set(["engagement", "jewelry", "couple", "designer"]);
+const normalizeStorefrontCategory = (category = "") => category === "wedding" ? "engagement" : category;
 const getProductCategory = (product = {}) => {
-  if (storefrontProductCategories.has(product.category)) return product.category;
+  const normalizedCategory = normalizeStorefrontCategory(product.category);
+  if (storefrontProductCategories.has(normalizedCategory)) return normalizedCategory;
   const identity = `${product.id ?? ""} ${product.sku ?? ""} ${product.name ?? ""} ${product.title ?? ""}`.toLowerCase();
   if (/\b(cp|couple)[-_]/.test(identity) || identity.includes("matching") || identity.includes("couple") || identity.includes("对戒") || identity.includes("情侣")) return "couple";
   if (/\b(ds|des|designer)[-_]/.test(identity) || identity.includes("designer") || identity.includes("设计师")) return "designer";
   if (/\b(jw|jewelry)[-_]/.test(identity) || identity.includes("necklace") || identity.includes("earring") || identity.includes("bracelet") || identity.includes("项链") || identity.includes("耳") || identity.includes("手链")) return "jewelry";
-  if (/\b(wr|wedding)[-_]/.test(identity) || identity.includes("wedding band") || identity.includes("婚戒")) return "wedding";
   return "engagement";
 };
 const containsChinese = (value = "") => /[\u3400-\u9fff]/.test(String(value));
@@ -352,13 +354,10 @@ const getProductDisplayName = (product = {}) => {
   const category = getProductCategory(product);
   if (category === "couple") return `${shape} Lab-Grown Diamond Matching Rings`;
   if (category === "jewelry") return `${shape} Lab-Grown Diamond Jewelry`;
-  if (category === "wedding") return `${caratText}${shape} Lab-Grown Diamond Wedding Ring`;
   if (category === "designer") return `${caratText}${shape} Designer Lab-Grown Diamond Ring`;
   return `${caratText}${shape} Lab-Grown Diamond Ring`;
 };
-const getProductImageAlt = (product = {}) => containsChinese(product.imageAlt)
-  ? getProductDisplayName(product)
-  : product.imageAlt || getProductDisplayName(product) || `${shapeLabel(product.shape)} lab-grown diamond jewelry`;
+const getProductImageAlt = (product = {}) => product.imageAlt || product.name || getProductDisplayName(product) || `${shapeLabel(product.shape)} lab-grown diamond jewelry`;
 const getProductImageTitle = (product = {}) => product.imageTitle || undefined;
 const orderedCatalogShapeKeys = ["oval", "round", "marquise", "emerald", "princess"];
 const catalogShapes = [
@@ -3026,16 +3025,15 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     materialImages: { whiteGold: [], roseGold: [], yellowGold: [] },
     videoUrls: [],
     variants: [
-      { carat: "1.00", material: "铂金", purity: "铂金", price: "1880" },
-      { carat: "1.50", material: "黄金", purity: "18K", price: "2680" },
-      { carat: "2.00", material: "玫瑰金", purity: "18K", price: "3980" }
+      { carat: "1.00", material: "铂金", purity: "铂金", price: "1880", stock: "8" },
+      { carat: "1.50", material: "黄金", purity: "18K", price: "2680", stock: "8" },
+      { carat: "2.00", material: "玫瑰金", purity: "18K", price: "3980", stock: "8" }
     ]
   };
   const productCategories = [
     { key: "engagement", label: "求婚钻戒" },
     { key: "jewelry", label: "首饰" },
     { key: "couple", label: "对戒" },
-    { key: "wedding", label: "结婚钻戒" },
     { key: "designer", label: "设计师款式" }
   ];
   const [productDraft, setProductDraft] = useState({
@@ -3159,19 +3157,19 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         images: product.images ?? [],
         materialImages: product.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] },
         videoUrls: product.videoUrls ?? [],
-        variants: (product.variants ?? []).map((variant) => ({ ...normalizeProductVariant(variant, product.material, product.price), price: String(variant.price ?? product.price ?? "") }))
+        variants: (product.variants ?? []).map((variant) => ({ ...normalizeProductVariant(variant, product.material, product.price), price: String(variant.price ?? product.price ?? ""), stock: String(variant.stock ?? product.stock ?? "1") }))
       });
     } else {
       setEditingProductId(null);
       setViewingProduct(null);
-      setProductDraft({ ...emptyProductDraft, sku: `${productTab.toUpperCase()}-${Date.now().toString().slice(-5)}` });
+      setProductDraft({ ...emptyProductDraft, sku: `${productTab.toUpperCase()}-${Date.now().toString(36).toUpperCase()}` });
     }
     setProductModal(mode);
   };
   const closeProductModal = () => {
     setEditingProductId(null);
     setViewingProduct(null);
-    setProductDraft({ ...emptyProductDraft, sku: `${productTab.toUpperCase()}-${Date.now().toString().slice(-5)}` });
+    setProductDraft({ ...emptyProductDraft, sku: `${productTab.toUpperCase()}-${Date.now().toString(36).toUpperCase()}` });
     setProductModal(null);
   };
   const syncProductToFrontend = (product) => {
@@ -3201,7 +3199,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       imageCaption: product.imageCaption,
       imageAlt: product.name,
       imageTitle: product.imageTitle ?? "",
-      variants: (product.variants ?? []).map((variant) => ({ ...normalizeProductVariant(variant, product.material, product.price), price: Number(variant.price) || 0 })),
+      variants: (product.variants ?? []).map((variant) => ({ ...normalizeProductVariant(variant, product.material, product.price), price: Number(variant.price) || 0, stock: Number(variant.stock) || 0 })),
       fast: product.status === "上架",
       realPhoto: Boolean(getPrimaryProductImage(product)),
       createdAt: 22,
@@ -3215,22 +3213,37 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const saveProduct = async () => {
     const materialImages = productDraft.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] };
     const allMaterialImages = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).filter(Boolean);
+    const normalizedVariants = (productDraft.variants ?? []).map((variant) => ({
+      ...normalizeProductVariant(variant, productDraft.variants?.[0]?.material || "Platinum", productDraft.price),
+      price: Number(variant.price) || 0,
+      stock: Math.max(0, Math.round(Number(variant.stock) || 0))
+    }));
+    const firstSellableVariant = normalizedVariants.find((variant) => Number(variant.price) > 0) ?? normalizedVariants[0];
+    const totalStock = normalizedVariants.reduce((sum, variant) => sum + (Math.max(0, Math.round(Number(variant.stock) || 0))), 0);
     const payload = {
       ...productDraft,
-      id: editingProductId || productDraft.sku || `${productTab}-${Date.now()}`,
-      sku: productDraft.sku || `${productTab.toUpperCase()}-${Date.now().toString().slice(-5)}`,
+      id: editingProductId || productDraft.sku || `${productTab}-${Date.now().toString(36).toUpperCase()}`,
+      sku: productDraft.sku || `${productTab.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
       category: productTab,
+      material: getMainMaterial(firstSellableVariant?.material || productDraft.material || "Platinum"),
       imageAlt: productDraft.name,
       imageTitle: productDraft.imageTitle ?? "",
-      price: Number(productDraft.price) || 0,
-      stock: Number(productDraft.stock) || 0,
+      price: Number(firstSellableVariant?.price ?? productDraft.price) || 0,
+      stock: totalStock,
       image: productDraft.image || allMaterialImages[0] || "",
       images: allMaterialImages,
       materialImages,
-      videoUrls: (productDraft.videoUrls ?? []).filter(Boolean)
+      videoUrls: (productDraft.videoUrls ?? []).filter(Boolean),
+      variants: normalizedVariants
     };
     setProductSaving(true);
     setApiNotice("");
+    const duplicateSku = productCatalog.some((item) => (item.sku || item.id) === payload.sku && item.id !== editingProductId);
+    if (duplicateSku) {
+      setApiNotice(`商品未保存：SKU「${payload.sku}」已存在，请更换 SKU 后再新增。`);
+      setProductSaving(false);
+      return;
+    }
     try {
       const savedProduct = await saveStorefrontProduct(payload);
       const nextProduct = savedProduct || payload;
@@ -3327,11 +3340,18 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const addVariant = () => {
     setProductDraft((current) => ({
       ...current,
-      variants: [...(current.variants ?? []), { carat: current.carat || "1.00", material: current.material, purity: getMaterialImageGroup(current.material) === "whiteGold" ? "铂金" : "18K", price: current.price || "0" }]
+      variants: [...(current.variants ?? []), { carat: current.carat || "1.00", material: current.variants?.[0]?.material || "Platinum", purity: getMaterialImageGroup(current.variants?.[0]?.material || "Platinum") === "whiteGold" ? "铂金" : "18K", price: current.price || "0", stock: current.stock || "1" }]
     }));
   };
   const removeVariant = (index) => {
     setProductDraft((current) => ({ ...current, variants: (current.variants ?? []).filter((_, variantIndex) => variantIndex !== index) }));
+  };
+  const applyVariantStockToAll = (stock) => {
+    setProductDraft((current) => ({
+      ...current,
+      stock,
+      variants: (current.variants ?? []).map((variant) => ({ ...variant, stock }))
+    }));
   };
   const updateOrder = async (id, patch) => {
     setOrders((items) => items.map((order) => order.id === id ? { ...order, ...patch } : order));
@@ -3632,7 +3652,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                           <strong>{viewingProduct.name}</strong>
                           <span>SKU：{viewingProduct.sku}</span>
                           <span>类目：{activeProductCategory.label}</span>
-                          <span>基础属性：{viewingProduct.material} / {viewingProduct.mainStone} / {viewingProduct.size}</span>
+                          <span>基础属性：{viewingProduct.mainStone} / {viewingProduct.size}</span>
                           <span>筛选属性：{shapeLabel(viewingProduct.shape)} / {viewingProduct.carat}ct / {viewingProduct.color} / {viewingProduct.clarity}</span>
                           <span>高级属性：{viewingProduct.cut} / {viewingProduct.certificate} / {viewingProduct.polish} / {viewingProduct.symmetry} / {viewingProduct.fluorescence}</span>
                           <span>价格库存：{money(viewingProduct.price)} / 库存 {viewingProduct.stock} / {viewingProduct.status}</span>
@@ -3686,12 +3706,9 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <h4>基础信息</h4>
                             <label><span>商品名称</span><input value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value, imageAlt: event.target.value })} placeholder="例如：椭圆形培育钻石求婚戒指" /></label>
                             <label><span>SKU 编码</span><input value={productDraft.sku} onChange={(event) => setProductDraft({ ...productDraft, sku: event.target.value })} placeholder="例如：ER-OVAL-001" /></label>
-                            <label><span>售价 USD</span><input value={productDraft.price} onChange={(event) => setProductDraft({ ...productDraft, price: event.target.value })} placeholder="例如：3280" /></label>
-                            <label><span>库存数量</span><input value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: event.target.value })} placeholder="例如：8" /></label>
                             <label className="wide"><span>商品简介</span><textarea value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} placeholder="介绍戒指设计、主钻比例、戒托工艺、适合场景等" /></label>
                             <label className="wide"><span>商品图文字提示</span><input value={productDraft.imageCaption} onChange={(event) => setProductDraft({ ...productDraft, imageCaption: event.target.value })} placeholder="例如：上传图片为 2.00ct 椭圆形实物图" /></label>
                             <label className="wide"><span>商品图片 title="" 属性</span><input value={productDraft.imageTitle ?? ""} onChange={(event) => setProductDraft({ ...productDraft, imageTitle: event.target.value })} placeholder="例如：2.00ct Oval Lab-Grown Diamond Engagement Ring" /></label>
-                            <label><span>戒托 / 商品材质</span><select value={getMainMaterial(productDraft.material)} onChange={(event) => setProductDraft({ ...productDraft, material: event.target.value })}>{mainMaterials.map((item) => <option key={item}>{item}</option>)}</select></label>
                             <label><span>主石 / 宝石属性</span><input value={productDraft.mainStone} onChange={(event) => setProductDraft({ ...productDraft, mainStone: event.target.value })} placeholder="例如：培育钻石" /></label>
                             <h4>前台筛选属性</h4>
                             <label><span>钻石形状</span><select value={productDraft.shape} onChange={(event) => setProductDraft({ ...productDraft, shape: event.target.value })}>{shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}</select></label>
@@ -3710,10 +3727,14 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                           <div className="variant-editor">
                             <div className="variant-editor-head">
                               <div>
-                                <h4>多规格价格</h4>
-                                <p>用户可在前台选择克拉数、主材质与材质纯度，不同规格对应不同售价；材质图片只跟随主材质变化。</p>
+                                <h4>多规格价格与库存</h4>
+                                <p>用户可在前台选择克拉数、主材质与材质纯度，不同规格分别设置售价和库存；商品列表价格取第一个规格，库存取所有规格总和。</p>
                               </div>
-                              <button className="ghost-btn" onClick={addVariant}>添加规格</button>
+                              <div className="variant-editor-actions">
+                                <label><span>统一库存</span><input value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: event.target.value })} placeholder="例如：8" /></label>
+                                <button className="ghost-btn" onClick={() => applyVariantStockToAll(productDraft.stock || "0")}>应用到全部规格</button>
+                                <button className="ghost-btn" onClick={addVariant}>添加规格</button>
+                              </div>
                             </div>
                             {(productDraft.variants ?? []).map((variant, index) => (
                               <div className="variant-row" key={index}>
@@ -3721,6 +3742,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                                 <label><span>戒托材质</span><select value={getMainMaterial(variant.material)} onChange={(event) => updateVariant(index, "material", event.target.value)}>{mainMaterials.map((item) => <option key={item}>{item}</option>)}</select></label>
                                 <label><span>材质纯度</span><select value={getPurityOptionsForMaterial(variant.material).includes(variant.purity ?? getMaterialPurity(variant.material)) ? variant.purity ?? getMaterialPurity(variant.material) : getPurityOptionsForMaterial(variant.material)[0]} onChange={(event) => updateVariant(index, "purity", event.target.value)}>{getPurityOptionsForMaterial(variant.material).map((item) => <option key={item}>{item}</option>)}</select></label>
                                 <label><span>规格价格 USD</span><input value={variant.price} onChange={(event) => updateVariant(index, "price", event.target.value)} /></label>
+                                <label><span>规格库存</span><input value={variant.stock ?? ""} onChange={(event) => updateVariant(index, "stock", event.target.value)} /></label>
                                 <button className="ghost-btn" onClick={() => removeVariant(index)} disabled={(productDraft.variants ?? []).length <= 1}>删除</button>
                               </div>
                             ))}

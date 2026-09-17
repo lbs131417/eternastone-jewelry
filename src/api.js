@@ -1,4 +1,4 @@
-const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
+const apiBase = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
 const adminTokenStorageKey = "everastone.admin.apiToken";
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "").replace(/\/$/, "");
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
@@ -25,19 +25,32 @@ function adminHeaders(extra = {}) {
 async function parseJsonResponse(response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "Request failed");
+    throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
   }
   return payload;
 }
 
+function apiUrl(path) {
+  return `${apiBase}${path}`;
+}
+
+async function apiFetch(path, options) {
+  const url = apiUrl(path);
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(`Cannot reach API: ${url}. ${error?.message || "Network request failed"}`);
+  }
+}
+
 export async function fetchStorefrontProducts() {
-  const response = await fetch(`${apiBase}/products`);
+  const response = await apiFetch("/products");
   const payload = await parseJsonResponse(response);
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
 export async function saveStorefrontProduct(product) {
-  const response = await fetch(`${apiBase}/products`, {
+  const response = await apiFetch("/products", {
     method: "POST",
     headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(product)
@@ -47,7 +60,7 @@ export async function saveStorefrontProduct(product) {
 }
 
 export async function deleteStorefrontProduct(id) {
-  const response = await fetch(`${apiBase}/products/${encodeURIComponent(id)}`, {
+  const response = await apiFetch(`/products/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: adminHeaders()
   });
@@ -55,13 +68,13 @@ export async function deleteStorefrontProduct(id) {
 }
 
 export async function fetchBlogPosts() {
-  const response = await fetch(`${apiBase}/blog-posts`);
+  const response = await apiFetch("/blog-posts");
   const payload = await parseJsonResponse(response);
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
 export async function saveBlogPostApi(post) {
-  const response = await fetch(`${apiBase}/blog-posts`, {
+  const response = await apiFetch("/blog-posts", {
     method: "POST",
     headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(post)
@@ -71,7 +84,7 @@ export async function saveBlogPostApi(post) {
 }
 
 export async function deleteBlogPostApi(id) {
-  const response = await fetch(`${apiBase}/blog-posts/${encodeURIComponent(id)}`, {
+  const response = await apiFetch(`/blog-posts/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: adminHeaders()
   });
@@ -79,7 +92,7 @@ export async function deleteBlogPostApi(id) {
 }
 
 export async function uploadProductImage({ dataUrl, fileName, contentType, sku, material }) {
-  const response = await fetch(`${apiBase}/uploads/product-image`, {
+  const response = await apiFetch("/uploads/product-image", {
     method: "POST",
     headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ dataUrl, fileName, contentType, sku, material })
@@ -89,7 +102,7 @@ export async function uploadProductImage({ dataUrl, fileName, contentType, sku, 
 }
 
 export async function createStorefrontOrder(order) {
-  const response = await fetch(`${apiBase}/orders`, {
+  const response = await apiFetch("/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(order)
@@ -99,7 +112,7 @@ export async function createStorefrontOrder(order) {
 }
 
 export async function createPayPalOrder(order) {
-  const response = await fetch(`${apiBase}/paypal/create-order`, {
+  const response = await apiFetch("/paypal/create-order", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(order)
@@ -109,7 +122,7 @@ export async function createPayPalOrder(order) {
 }
 
 export async function capturePayPalOrder(paypalOrderId, localOrderId) {
-  const response = await fetch(`${apiBase}/paypal/capture-order`, {
+  const response = await apiFetch("/paypal/capture-order", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ paypalOrderId, localOrderId })
@@ -119,7 +132,7 @@ export async function capturePayPalOrder(paypalOrderId, localOrderId) {
 }
 
 export async function fetchAdminOrders() {
-  const response = await fetch(`${apiBase}/orders`, {
+  const response = await apiFetch("/orders", {
     headers: adminHeaders()
   });
   const payload = await parseJsonResponse(response);
@@ -127,7 +140,7 @@ export async function fetchAdminOrders() {
 }
 
 export async function lookupGuestOrders(email) {
-  const response = await fetch(`${apiBase}/orders/lookup`, {
+  const response = await apiFetch("/orders/lookup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email })
@@ -137,7 +150,7 @@ export async function lookupGuestOrders(email) {
 }
 
 export async function trackAnalyticsEvent(event) {
-  const response = await fetch(`${apiBase}/analytics/events`, {
+  const response = await apiFetch("/analytics/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(event)
@@ -146,7 +159,7 @@ export async function trackAnalyticsEvent(event) {
 }
 
 export async function fetchAdminAnalyticsSummary() {
-  const response = await fetch(`${apiBase}/analytics/summary`, {
+  const response = await apiFetch("/analytics/summary", {
     headers: adminHeaders()
   });
   const payload = await parseJsonResponse(response);
@@ -154,7 +167,7 @@ export async function fetchAdminAnalyticsSummary() {
 }
 
 export async function updateAdminOrder(id, patch) {
-  const response = await fetch(`${apiBase}/orders/${encodeURIComponent(id)}`, {
+  const response = await apiFetch(`/orders/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(patch)

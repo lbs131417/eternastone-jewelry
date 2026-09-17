@@ -245,7 +245,8 @@ function productToRow(product = {}) {
         carat: cleanText(variant.carat, "1.00"),
         material: normalizeMainMaterial(variant.material || product.material || "铂金"),
         purity: normalizePurity(variant.material || product.material || "铂金", variant.purity),
-        price: toNumber(variant.price, product.price)
+        price: toNumber(variant.price, product.price),
+        stock: Math.max(0, Math.round(toNumber(variant.stock)))
       }))
     : [];
   const primaryImage = String(product.image ?? "")
@@ -260,8 +261,8 @@ function productToRow(product = {}) {
     sku,
     category,
     name: cleanText(product.name, `${sku} 商品`),
-    price: toNumber(product.price),
-    stock: Math.max(0, Math.round(toNumber(product.stock))),
+    price: toNumber(product.price, variants.find((variant) => Number(variant.price) > 0)?.price ?? variants[0]?.price ?? 0),
+    stock: Math.max(0, Math.round(toNumber(product.stock, variants.reduce((sum, variant) => sum + Math.max(0, Math.round(toNumber(variant.stock))), 0)))),
     material: normalizeMainMaterial(product.material || "铂金"),
     main_stone: cleanText(product.mainStone, "培育钻石"),
     shape,
