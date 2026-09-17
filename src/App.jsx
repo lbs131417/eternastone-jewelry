@@ -353,12 +353,44 @@ const getProductCategory = (product = {}) => {
   if (/\b(jw|jewelry)[-_]/.test(identity) || identity.includes("necklace") || identity.includes("earring") || identity.includes("bracelet") || identity.includes("项链") || identity.includes("耳") || identity.includes("手链")) return "jewelry";
   return "engagement";
 };
+const getProductVariantCarats = (product = {}) => {
+  const variantCarats = (product.variants ?? [])
+    .map((variant) => Number(variant.carat))
+    .filter((carat) => Number.isFinite(carat) && carat > 0);
+  const fallbackCarat = Number(product.carat);
+  const carats = variantCarats.length ? variantCarats : Number.isFinite(fallbackCarat) && fallbackCarat > 0 ? [fallbackCarat] : [];
+  return Array.from(new Set(carats.map((carat) => Number(carat.toFixed(2))))).sort((a, b) => a - b);
+};
+const formatCaratValue = (carat) => Number(carat).toFixed(Number(carat) % 1 === 0 ? 0 : 2);
+const getProductCaratRangeLabel = (product = {}) => {
+  const carats = getProductVariantCarats(product);
+  if (!carats.length) return "Custom ct";
+  const min = carats[0];
+  const max = carats[carats.length - 1];
+  return min === max ? `${formatCaratValue(min)} ct` : `${formatCaratValue(min)}–${formatCaratValue(max)} ct`;
+};
+const productMatchesCaratRange = (product = {}, min = 0, max = Infinity) => {
+  const carats = getProductVariantCarats(product);
+  return carats.length ? carats.some((carat) => carat >= min && carat <= max) : false;
+};
+const getProductSpecSummary = (product = {}) => {
+  const materials = Array.from(new Set((product.variants ?? []).map((variant) => getMainMaterial(variant.material)).filter(Boolean)));
+  const metalText = materials.length > 1 ? `${materials.length} metals` : materials[0] || getMainMaterial(product.material);
+  return `${getProductCaratRangeLabel(product)} · ${metalText}`;
+};
+const getLowestPricedVariant = (product = {}) => {
+  const variants = (product.variants ?? [])
+    .map((variant) => normalizeProductVariant(variant, product.material, product.price))
+    .filter((variant) => Number(variant.price) > 0)
+    .sort((a, b) => Number(a.price) - Number(b.price));
+  return variants[0] ?? normalizeProductVariant(product.variants?.[0], product.material, product.price);
+};
+const getProductFromPriceLabel = (product = {}) => `From ${money(Number(getLowestPricedVariant(product)?.price) || Number(product.price) || 0)}`;
 const containsChinese = (value = "") => /[\u3400-\u9fff]/.test(String(value));
 const getProductDisplayName = (product = {}) => {
   const rawName = product.name || product.title || "";
   if (rawName && !containsChinese(rawName)) return rawName;
-  const carat = Number(product.carat);
-  const caratText = Number.isFinite(carat) && carat > 0 ? `${carat.toFixed(2)} ct ` : "";
+  const caratText = `${getProductCaratRangeLabel(product)} `;
   const shape = shapeLabel(product.shape);
   const category = getProductCategory(product);
   if (category === "couple") return `${shape} Lab-Grown Diamond Matching Rings`;
@@ -1038,8 +1070,11 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
     const sorted = diamonds
       .filter((diamond) => getProductCategory(diamond) === "engagement")
       .filter((diamond) => !filters.shape || diamond.shape === filters.shape)
-      .filter((diamond) => diamond.carat >= filters.caratMin && diamond.carat <= filters.caratMax)
-      .filter((diamond) => diamond.price >= filters.priceMin && diamond.price <= filters.priceMax)
+      .filter((diamond) => productMatchesCaratRange(diamond, filters.caratMin, filters.caratMax))
+      .filter((diamond) => {
+        const fromPrice = Number(getLowestPricedVariant(diamond)?.price) || Number(diamond.price) || 0;
+        return fromPrice >= filters.priceMin && fromPrice <= filters.priceMax;
+      })
       .filter((diamond) => !filters.color || diamond.color === filters.color)
       .filter((diamond) => !filters.clarity || diamond.clarity === filters.clarity)
       .filter((diamond) => !filters.cut || diamond.cut === filters.cut)
@@ -1051,8 +1086,8 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
       .filter((diamond) => !filters.fast || diamond.fast);
 
     return sorted.sort((a, b) => {
-      if (filters.sort === "price-asc") return a.price - b.price;
-      if (filters.sort === "price-desc") return b.price - a.price;
+      if (filters.sort === "price-asc") return (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price);
+      if (filters.sort === "price-desc") return (Number(getLowestPricedVariant(b)?.price) || b.price) - (Number(getLowestPricedVariant(a)?.price) || a.price);
       if (filters.sort === "new") return b.createdAt - a.createdAt;
       return b.sold - a.sold;
     });
@@ -1200,8 +1235,8 @@ function ProductCard({ product, openProduct, addToCart }) {
   const selectedGroup = productCardMaterialGroups.find((group) => group.key === materialGroup) ?? availableGroups[0] ?? materialImageGroups[0];
   const cardImage = getProductMedia(product, selectedGroup.label).images?.[0] || getPrimaryProductImage(product);
   const fallbackImage = getPrimaryProductImage(product);
-  const firstVariant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
-  const quickMetal = `${selectedGroup.label}${firstVariant.purity && firstVariant.purity !== selectedGroup.label ? ` · ${firstVariant.purity}` : ""}`;
+  const firstVariant = getLowestPricedVariant(product);
+  const quickMetal = firstVariant?.material === "Platinum" ? "Pure Platinum" : `${firstVariant?.purity ?? "18K"} ${firstVariant?.material ?? "White Gold"}`;
   const openCard = () => openProduct(product.id);
   const quickAdd = (event) => {
     event.stopPropagation();
@@ -1235,9 +1270,9 @@ function ProductCard({ product, openProduct, addToCart }) {
       />
       <div>
         <h3>{getProductDisplayName(product)}</h3>
-        <p>{Number(product.carat).toFixed(2)} ct · {product.color} Color · {product.clarity} Clarity · {product.certificate}</p>
+        <p>{getProductSpecSummary(product)} · {product.color} Color · {product.clarity} Clarity · {product.certificate}</p>
         <div className="card-price-row">
-          <strong>{money(product.price)}</strong>
+          <strong>{getProductFromPriceLabel(product)}</strong>
           <button className="card-add-btn" type="button" onClick={quickAdd}>Add</button>
         </div>
       </div>
@@ -1294,7 +1329,9 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
       price: Math.round(basePrice * (carat / baseCarat) * (index > 2 ? 1.08 : 1))
     }));
   }, [product]);
-  const variants = (product?.variants?.length ? product.variants : defaultVariants).map((variant) => normalizeProductVariant(variant, product?.material, product?.price));
+  const variants = (product?.variants?.length ? product.variants : defaultVariants)
+    .map((variant) => normalizeProductVariant(variant, product?.material, product?.price))
+    .sort((a, b) => Number(a.price) - Number(b.price));
   const [variantIndex, setVariantIndex] = useState(0);
   const selectedVariant = variants[Math.min(variantIndex, variants.length - 1)] ?? variants[0];
   const [sizeType, setSizeType] = useState("US");
@@ -2129,7 +2166,7 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
     .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0));
   const featuredProducts = dedicatedDesignerProducts.slice(0, 5);
   const quickBuy = (product) => {
-    const variant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
+    const variant = getLowestPricedVariant(product);
     addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
   };
 
@@ -2142,17 +2179,16 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
       </section>
       <section className="designer-track" aria-label="Designer edition products">
         {featuredProducts.slice(0, 5).map((product, index) => {
-          const variant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
           return (
             <article className="designer-product-card" key={product.id}>
               <span className="designer-index">0{index + 1}</span>
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} loading="lazy" />
               <div>
-                <p className="designer-tag">{Number(product.carat).toFixed(2)}ct · {shapeLabel(product.shape)}</p>
+                <p className="designer-tag">{getProductCaratRangeLabel(product)} · {shapeLabel(product.shape)}</p>
                 <h2>{getProductDisplayName(product)}</h2>
                 <p>Design language: clean shoulders and a high-set center stone, made for polished, memorable proposal moments.</p>
                 <div className="designer-buy-row">
-                  <strong>{money(variant.price ?? product.price)}</strong>
+                  <strong>{getProductFromPriceLabel(product)}</strong>
                   <div className="designer-card-actions">
                     <button className="gold-btn" onClick={() => openProduct(product.id)}>View Details</button>
                     <button className="redline-btn" onClick={() => quickBuy(product)}>Buy Now</button>
@@ -2173,7 +2209,7 @@ function FeaturedProductGuide({ diamonds, openProduct, addToCart, setPage, title
     .slice(0, 3);
   const products = featured;
   const quickAdd = (product) => {
-    const variant = normalizeProductVariant(product.variants?.[0], product.material, product.price);
+    const variant = getLowestPricedVariant(product);
     addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
   };
 
@@ -2194,9 +2230,9 @@ function FeaturedProductGuide({ diamonds, openProduct, addToCart, setPage, title
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} loading="lazy" />
             </button>
             <div>
-              <span>{Number(product.carat).toFixed(2)}ct · {shapeLabelEn(product.shape)}</span>
+              <span>{getProductCaratRangeLabel(product)} · {shapeLabelEn(product.shape)}</span>
               <strong>{shapeLabelEn(product.shape)} Lab-Grown Diamond Ring</strong>
-              <small>{money(product.price)}</small>
+              <small>{getProductFromPriceLabel(product)}</small>
               <button type="button" onClick={() => quickAdd(product)}>Add to Bag</button>
             </div>
           </article>
@@ -2793,7 +2829,7 @@ function Account({ setPage }) {
                   return (
                     <article className="guest-order-card" key={favorite.id}>
                       <div><span>Product</span><strong>{product.name || "Saved product"}</strong></div>
-                      <div><span>Price</span><strong>{product.price ? money(product.price) : "-"}</strong></div>
+                      <div><span>Price</span><strong>{product.price ? getProductFromPriceLabel(product) : "-"}</strong></div>
                       <div><span>Saved</span><strong>{favorite.created_at ? new Date(favorite.created_at).toLocaleDateString("en-US") : "-"}</strong></div>
                     </article>
                   );
@@ -2867,9 +2903,9 @@ function BlogPage({ posts, diamonds, openProduct, blogSlug, setPage }) {
           {recommendedProducts.map((product) => (
             <button className="blog-recommend-card" key={product.id} onClick={() => openProduct(product.id)}>
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} />
-              <span>{shapeLabelEn(product.shape)} · {Number(product.carat).toFixed(2)}ct</span>
+              <span>{shapeLabelEn(product.shape)} · {getProductCaratRangeLabel(product)}</span>
               <strong>{getProductDisplayName(product)}</strong>
-              <small>{money(product.price)}</small>
+              <small>{getProductFromPriceLabel(product)}</small>
             </button>
           ))}
         </aside>
@@ -2904,9 +2940,9 @@ function BlogPage({ posts, diamonds, openProduct, blogSlug, setPage }) {
           {recommendedProducts.map((product) => (
             <button className="blog-recommend-card" key={product.id} onClick={() => openProduct(product.id)}>
               <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} />
-              <span>{shapeLabelEn(product.shape)} · {Number(product.carat).toFixed(2)}ct</span>
+              <span>{shapeLabelEn(product.shape)} · {getProductCaratRangeLabel(product)}</span>
               <strong>{getProductDisplayName(product)}</strong>
-              <small>{money(product.price)}</small>
+              <small>{getProductFromPriceLabel(product)}</small>
             </button>
           ))}
         </aside>
@@ -3212,7 +3248,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     setProductModal(null);
   };
   const syncProductToFrontend = (product) => {
-    const firstVariant = product.variants?.[0];
+    const firstVariant = getLowestPricedVariant(product);
     const diamondItem = {
       id: product.sku,
       category: getProductCategory(product),
@@ -3257,7 +3293,10 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       price: Number(variant.price) || 0,
       stock: Math.max(0, Math.round(Number(variant.stock) || 0))
     }));
-    const firstSellableVariant = normalizedVariants.find((variant) => Number(variant.price) > 0) ?? normalizedVariants[0];
+    const firstSellableVariant = normalizedVariants
+      .filter((variant) => Number(variant.price) > 0)
+      .sort((a, b) => Number(a.price) - Number(b.price))[0] ?? normalizedVariants[0];
+    const representativeCarat = getProductVariantCarats({ ...productDraft, variants: normalizedVariants })[0] ?? Number(firstSellableVariant?.carat) ?? Number(productDraft.carat) ?? 1;
     const totalStock = normalizedVariants.reduce((sum, variant) => sum + (Math.max(0, Math.round(Number(variant.stock) || 0))), 0);
     const payload = {
       ...productDraft,
@@ -3267,6 +3306,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       material: getMainMaterial(firstSellableVariant?.material || productDraft.material || "White Gold"),
       imageAlt: productDraft.name,
       imageTitle: productDraft.imageTitle ?? "",
+      carat: representativeCarat,
       price: Number(firstSellableVariant?.price ?? productDraft.price) || 0,
       stock: totalStock,
       image: productDraft.image || allMaterialImages[0] || "",
@@ -3755,8 +3795,8 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                         <span>{thumbImage ? <img className="admin-product-thumb" src={thumbImage} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} /> : "无图"}</span>
                         <span>{product.name}</span>
                         <span>{product.sku}</span>
-                        <span>{product.material} / {shapeLabel(product.shape)} / {product.carat}ct / {product.color} / {product.clarity}</span>
-                        <strong>{money(product.price)}</strong>
+                        <span>{product.material} / {shapeLabel(product.shape)} / {getProductSpecSummary(product)} / {product.color} / {product.clarity}</span>
+                        <strong>{getProductFromPriceLabel(product)}</strong>
                         <span>{product.stock}</span>
                         <span>{product.status}</span>
                         <span className="admin-actions">
@@ -3799,7 +3839,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                           <span>SKU：{viewingProduct.sku}</span>
                           <span>类目：{activeProductCategory.label}</span>
                           <span>基础属性：{viewingProduct.mainStone} / {viewingProduct.size}</span>
-                          <span>筛选属性：{shapeLabel(viewingProduct.shape)} / {viewingProduct.carat}ct / {viewingProduct.color} / {viewingProduct.clarity}</span>
+                          <span>筛选属性：{shapeLabel(viewingProduct.shape)} / {getProductSpecSummary(viewingProduct)} / {viewingProduct.color} / {viewingProduct.clarity}</span>
                           <span>高级属性：{viewingProduct.cut} / {viewingProduct.certificate} / {viewingProduct.polish} / {viewingProduct.symmetry} / {viewingProduct.fluorescence}</span>
                           <span>价格库存：{money(viewingProduct.price)} / 库存 {viewingProduct.stock} / {viewingProduct.status}</span>
                           <span>图片 alt：{getProductImageAlt(viewingProduct)}</span>
@@ -3863,7 +3903,6 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <label><span>主石 / 宝石属性</span><input value={productDraft.mainStone} onChange={(event) => setProductDraft({ ...productDraft, mainStone: event.target.value })} placeholder="例如：培育钻石" /></label>
                             <h4>前台筛选属性</h4>
                             <label><span>钻石形状</span><select value={productDraft.shape} onChange={(event) => setProductDraft({ ...productDraft, shape: event.target.value })}>{shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}</select></label>
-                            <label><span>克拉重量</span><input value={productDraft.carat} onChange={(event) => setProductDraft({ ...productDraft, carat: event.target.value })} placeholder="1.00 - 7.00" /></label>
                             <label><span>颜色等级</span><select value={productDraft.color} onChange={(event) => setProductDraft({ ...productDraft, color: event.target.value })}>{colors.map((item) => <option key={item}>{item}</option>)}</select></label>
                             <label><span>净度等级</span><select value={productDraft.clarity} onChange={(event) => setProductDraft({ ...productDraft, clarity: event.target.value })}>{clarities.map((item) => <option key={item}>{item}</option>)}</select></label>
                             <label><span>切工等级</span><select value={productDraft.cut} onChange={(event) => setProductDraft({ ...productDraft, cut: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
