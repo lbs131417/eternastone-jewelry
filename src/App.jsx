@@ -270,39 +270,46 @@ const shapeLabel = (key) => shapes.find((shape) => shape.key === key)?.label ?? 
 const shapeLabelEn = (key) => shapes.find((shape) => shape.key === key)?.label ?? key;
 const shapeKeyFromLabel = (value) => shapes.find((shape) => shape.zh === value || shape.key === value)?.key ?? "round";
 const materialImageGroups = [
-  { key: "whiteGold", label: "Platinum", keywords: ["白金", "white", "platinum", "铂金", "pt", "925"] },
+  { key: "whiteGold", label: "White Gold / Platinum", keywords: ["白金", "white gold", "white", "铂金", "platinum", "pure platinum", "pt", "950", "925"] },
   { key: "yellowGold", label: "Yellow Gold", keywords: ["黄金", "yellow"] },
   { key: "roseGold", label: "Rose Gold", keywords: ["玫瑰", "rose"] }
 ];
-const mainMaterials = materialImageGroups.map((group) => group.label);
+const mainMaterials = ["White Gold", "Platinum", "Yellow Gold", "Rose Gold"];
 const goldPurities = ["10K", "14K", "18K"];
-const platinumPurities = ["10K", "14K", "18K", "Pure Platinum"];
+const platinumPurities = ["Pure Platinum"];
 const variantCaratOptions = ["1.00", "2.00", "3.00", "4.00", "5.00"];
 const getPurityOptionsForMaterial = (material = "") => getMainMaterial(material) === "Platinum" ? platinumPurities : goldPurities;
 const getMaterialImageGroup = (material = "") => {
   const normalized = String(material).toLowerCase();
   return materialImageGroups.find((group) => group.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())))?.key ?? "whiteGold";
 };
-const getMainMaterial = (material = "") => materialImageGroups.find((group) => group.key === getMaterialImageGroup(material))?.label ?? "Platinum";
+const getMainMaterial = (material = "") => {
+  const normalized = String(material).toLowerCase();
+  if (normalized.includes("铂金") || normalized.includes("platinum") || normalized.includes("pure platinum") || normalized.includes("pt950") || normalized.includes("950") || /\bpt\b/.test(normalized)) return "Platinum";
+  if (normalized.includes("黄金") || normalized.includes("yellow")) return "Yellow Gold";
+  if (normalized.includes("玫瑰") || normalized.includes("rose")) return "Rose Gold";
+  return "White Gold";
+};
 const getMaterialShortLabel = (materialOrGroup = "") => ({
   yellowGold: "YG",
-  whiteGold: "PT",
+  whiteGold: "WG",
   roseGold: "RG",
+  "White Gold / Platinum": "WG/PT",
   "Yellow Gold": "YG",
+  "White Gold": "WG",
   Platinum: "PT",
   "Rose Gold": "RG"
 }[materialOrGroup] || materialOrGroup);
 const getMaterialPurity = (material = "", purity = "") => {
   const mainMaterial = getMainMaterial(material);
-  if (purity && !["铂金", "Platinum", "Pure Platinum"].includes(String(purity))) return String(purity);
-  if (purity === "Pure Platinum") return "Pure Platinum";
   if (mainMaterial === "Platinum") return "Pure Platinum";
+  if (purity && goldPurities.includes(String(purity).toUpperCase())) return String(purity).toUpperCase();
   const value = String(material);
   const match = value.match(/1[0-8]K/i);
   if (match) return match[0].toUpperCase();
   return "18K";
 };
-const normalizeProductVariant = (variant = {}, fallbackMaterial = "Platinum", fallbackPrice = 0) => ({
+const normalizeProductVariant = (variant = {}, fallbackMaterial = "White Gold", fallbackPrice = 0) => ({
   carat: String(variant.carat ?? "1.00"),
   material: getMainMaterial(variant.material ?? fallbackMaterial),
   purity: getMaterialPurity(variant.material ?? fallbackMaterial, variant.purity),
@@ -1178,6 +1185,7 @@ function ProductCard({ product, openProduct, addToCart }) {
   const productCardMaterialGroups = useMemo(() => [
     materialImageGroups.find((group) => group.key === "yellowGold"),
     materialImageGroups.find((group) => group.key === "whiteGold"),
+    materialImageGroups.find((group) => group.key === "platinum"),
     materialImageGroups.find((group) => group.key === "roseGold")
   ].filter(Boolean), []);
   useEffect(() => {
@@ -1358,7 +1366,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const tryOnDiamondImage = shapes.find((shape) => shape.key === product.shape)?.image ?? product.image;
   const displayPrice = Number(selectedVariant?.price) || product.price;
   const firstOrderPrice = Math.round(displayPrice * 0.9);
-  const selectedMetalText = selectedVariant?.purity === "Platinum" ? "Platinum" : `${selectedVariant?.purity ?? "18K"} ${selectedVariant?.material ?? "Platinum"}`;
+  const selectedMetalText = selectedVariant?.material === "Platinum" ? "Pure Platinum" : `${selectedVariant?.purity ?? "18K"} ${selectedVariant?.material ?? "White Gold"}`;
   const estimatedArrival = formatArrivalDate(23);
   const imageCaption = product.imageCaption || `${Number(product.carat || previewCarat).toFixed(2)}ct ${shapeLabel(product.shape)} product image`;
   const productDescription = product.description || `This ${shapeLabel(product.shape)} lab-grown diamond ring is designed around everyday comfort, balanced proportions and visible brilliance. Choose the carat, metal and size combination that best fits your proposal, anniversary or lifelong promise.`;
@@ -3003,7 +3011,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     sku: "",
     price: "",
     stock: "",
-    material: "铂金",
+    material: "White Gold",
     mainStone: "培育钻石",
     shape: "round",
     carat: "1.50",
@@ -3028,6 +3036,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     videoUrls: [],
     variants: [
       { carat: "1.00", material: "Yellow Gold", purity: "18K", price: "1880", stock: "8" },
+      { carat: "1.00", material: "White Gold", purity: "18K", price: "2280", stock: "8" },
       { carat: "1.00", material: "Platinum", purity: "Pure Platinum", price: "2680", stock: "8" },
       { carat: "1.00", material: "Rose Gold", purity: "18K", price: "3980", stock: "8" }
     ]
@@ -3168,6 +3177,36 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     }
     setProductModal(mode);
   };
+  const copyProduct = (product) => {
+    const category = getProductCategory(product);
+    const sourceSku = product.sku || product.id || category.toUpperCase();
+    const copySku = `${sourceSku}-COPY-${Date.now().toString(36).toUpperCase()}`;
+    setProductTab(category);
+    setEditingProductId(null);
+    setViewingProduct(null);
+    setProductDraft({
+      ...product,
+      id: copySku,
+      sku: copySku,
+      category,
+      price: String(product.price ?? ""),
+      stock: String(product.stock ?? ""),
+      images: [...(product.images ?? [])],
+      materialImages: {
+        whiteGold: [...(product.materialImages?.whiteGold ?? []), ...(product.materialImages?.platinum ?? [])],
+        roseGold: [...(product.materialImages?.roseGold ?? [])],
+        yellowGold: [...(product.materialImages?.yellowGold ?? [])]
+      },
+      videoUrls: [...(product.videoUrls ?? [])],
+      variants: (product.variants?.length ? product.variants : emptyProductDraft.variants).map((variant) => ({
+        ...normalizeProductVariant(variant, product.material, product.price),
+        price: String(variant.price ?? product.price ?? ""),
+        stock: String(variant.stock ?? product.stock ?? "1")
+      }))
+    });
+    setApiNotice(`已复制商品「${product.sku || product.name}」，请确认新 SKU、价格和库存后保存。`);
+    setProductModal("add");
+  };
   const closeProductModal = () => {
     setEditingProductId(null);
     setViewingProduct(null);
@@ -3216,7 +3255,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     const materialImages = productDraft.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] };
     const allMaterialImages = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).filter(Boolean);
     const normalizedVariants = (productDraft.variants ?? []).map((variant) => ({
-      ...normalizeProductVariant(variant, productDraft.variants?.[0]?.material || "Platinum", productDraft.price),
+      ...normalizeProductVariant(variant, productDraft.variants?.[0]?.material || "White Gold", productDraft.price),
       price: Number(variant.price) || 0,
       stock: Math.max(0, Math.round(Number(variant.stock) || 0))
     }));
@@ -3227,7 +3266,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       id: editingProductId || productDraft.sku || `${productTab}-${Date.now().toString(36).toUpperCase()}`,
       sku: productDraft.sku || `${productTab.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
       category: productTab,
-      material: getMainMaterial(firstSellableVariant?.material || productDraft.material || "Platinum"),
+      material: getMainMaterial(firstSellableVariant?.material || productDraft.material || "White Gold"),
       imageAlt: productDraft.name,
       imageTitle: productDraft.imageTitle ?? "",
       price: Number(firstSellableVariant?.price ?? productDraft.price) || 0,
@@ -3317,6 +3356,23 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         [groupKey]: [...(current.materialImages?.[groupKey] ?? []), ...images]
       }
     })));
+  };
+  const removeMaterialImage = (groupKey, imageIndex) => {
+    setProductDraft((current) => {
+      const materialImages = {
+        ...(current.materialImages ?? {}),
+        [groupKey]: (current.materialImages?.[groupKey] ?? []).filter((_, index) => index !== imageIndex)
+      };
+      const remainingImages = [
+        ...(current.images ?? []),
+        ...materialImageGroups.flatMap((group) => materialImages[group.key] ?? [])
+      ].filter(Boolean);
+      return {
+        ...current,
+        image: remainingImages[0] ?? "",
+        materialImages
+      };
+    });
   };
   const updateVideoUrl = (index, value) => {
     setProductDraft((current) => ({
@@ -3581,7 +3637,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         sku: product.sku ?? product.id,
         price: Number(product.price) || 0,
         stock: Number(product.stock) || 0,
-        material: getMainMaterial(product.material ?? product.variants?.[0]?.material ?? "铂金"),
+        material: getMainMaterial(product.material ?? product.variants?.[0]?.material ?? "White Gold"),
         mainStone: product.mainStone ?? "培育钻石",
         shape: product.shape,
         carat: String(product.carat ?? "1.00"),
@@ -3708,6 +3764,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                         <span className="admin-actions">
                           <button onClick={() => openProductModal("view", product)}>查看</button>
                           <button onClick={() => editProduct(product)}>编辑</button>
+                          <button onClick={() => copyProduct(product)}>复制</button>
                           <button onClick={() => deleteProduct(product)}>删除</button>
                         </span>
                       </div>
@@ -3756,7 +3813,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <strong>可选规格价格</strong>
                             {(viewingProduct.variants ?? []).map((variant, index) => {
                               const normalizedVariant = normalizeProductVariant(variant, viewingProduct.material, viewingProduct.price);
-                              const metalText = normalizedVariant.purity === "铂金" ? "铂金" : `${normalizedVariant.purity} ${normalizedVariant.material}`;
+                              const metalText = normalizedVariant.material === "Platinum" ? "Pure Platinum" : `${normalizedVariant.purity} ${normalizedVariant.material}`;
                               return <p key={`${variant.carat}-${index}`}>{normalizedVariant.carat}ct / {metalText} / {money(Number(normalizedVariant.price))}</p>;
                             })}
                           </div>
@@ -3765,7 +3822,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                         <>
                           <div className="material-media-editor">
                             <h4>按戒托材质上传商品图</h4>
-                            <p>只区分铂金、黄金、玫瑰金三种展示图；10K-18K 等纯度会自动归到同一种主材质图片。每种材质第一张图会作为该材质列表主图。</p>
+                            <p>按 White Gold / Platinum、Yellow Gold、Rose Gold 上传商品图；白金和铂金共用同一套商品图，10K-18K 等纯度会自动归到同一种主材质图片。</p>
                             {materialImageGroups.map((group) => (
                               <div className="material-media-card" key={group.key}>
                                 <label className="image-uploader small">
@@ -3773,7 +3830,12 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                                   <span>上传{group.label}多张商品图</span>
                                 </label>
                                 <div className="modal-image-grid compact">
-                                  {(productDraft.materialImages?.[group.key] ?? []).map((image, index) => <img key={`${group.key}-${index}`} src={image} alt={`${getProductImageAlt(productDraft)} ${group.label} ${index + 1}`} title={getProductImageTitle(productDraft)} />)}
+                                  {(productDraft.materialImages?.[group.key] ?? []).map((image, index) => (
+                                    <div className="editable-image-thumb" key={`${group.key}-${index}`}>
+                                      <img src={image} alt={`${getProductImageAlt(productDraft)} ${group.label} ${index + 1}`} title={getProductImageTitle(productDraft)} />
+                                      <button type="button" onClick={() => removeMaterialImage(group.key, index)}>删除</button>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             ))}

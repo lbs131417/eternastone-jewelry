@@ -123,20 +123,22 @@ function moneyValue(value) {
 
 function normalizeMainMaterial(value = "") {
   const material = String(value).toLowerCase();
-  if (material.includes("黄金") || material.includes("yellow")) return "黄金";
-  if (material.includes("玫瑰") || material.includes("rose")) return "玫瑰金";
-  return "铂金";
+  if (material.includes("黄金") || material.includes("yellow")) return "Yellow Gold";
+  if (material.includes("玫瑰") || material.includes("rose")) return "Rose Gold";
+  if (material.includes("铂金") || material.includes("platinum") || material.includes("pure platinum") || material.includes("pt950") || material.includes("950") || /\bpt\b/.test(material)) return "Platinum";
+  if (material.includes("白金") || material.includes("white")) return "White Gold";
+  return "White Gold";
 }
 
 function normalizePurity(material = "", purity = "") {
   const mainMaterial = normalizeMainMaterial(material);
   const rawPurity = String(purity || "").trim();
   const explicitPurity = rawPurity.toUpperCase();
-  if (mainMaterial === "铂金" && /PURE|纯/.test(explicitPurity)) return "Pure Platinum";
+  if (mainMaterial === "Platinum") return "Pure Platinum";
   if (/^(10K|14K|18K)$/.test(explicitPurity)) return explicitPurity;
   const materialPurity = String(material || "").toUpperCase().match(/1[0-8]K/);
   if (materialPurity && ["10K", "14K", "18K"].includes(materialPurity[0])) return materialPurity[0];
-  return mainMaterial === "铂金" ? "Pure Platinum" : "18K";
+  return "18K";
 }
 
 function slugify(value = "") {
@@ -237,7 +239,10 @@ function productToRow(product = {}) {
   const images = Array.isArray(product.images) ? product.images.filter(Boolean) : product.image ? [product.image] : [];
   const materialImages = product.materialImages ?? {};
   const normalizedMaterialImages = {
-    whiteGold: Array.isArray(materialImages.whiteGold) ? materialImages.whiteGold.filter(Boolean) : [],
+    whiteGold: [
+      ...(Array.isArray(materialImages.whiteGold) ? materialImages.whiteGold.filter(Boolean) : []),
+      ...(Array.isArray(materialImages.platinum) ? materialImages.platinum.filter(Boolean) : [])
+    ],
     roseGold: Array.isArray(materialImages.roseGold) ? materialImages.roseGold.filter(Boolean) : [],
     yellowGold: Array.isArray(materialImages.yellowGold) ? materialImages.yellowGold.filter(Boolean) : []
   };
@@ -246,8 +251,8 @@ function productToRow(product = {}) {
   const variants = Array.isArray(product.variants)
     ? product.variants.map((variant) => ({
         carat: cleanText(variant.carat, "1.00"),
-        material: normalizeMainMaterial(variant.material || product.material || "铂金"),
-        purity: normalizePurity(variant.material || product.material || "铂金", variant.purity),
+        material: normalizeMainMaterial(variant.material || product.material || "White Gold"),
+        purity: normalizePurity(variant.material || product.material || "White Gold", variant.purity),
         price: toNumber(variant.price, product.price),
         stock: Math.max(0, Math.round(toNumber(variant.stock)))
       }))
@@ -266,7 +271,7 @@ function productToRow(product = {}) {
     name: cleanText(product.name, `${sku} 商品`),
     price: toNumber(product.price, variants.find((variant) => Number(variant.price) > 0)?.price ?? variants[0]?.price ?? 0),
     stock: Math.max(0, Math.round(toNumber(product.stock, variants.reduce((sum, variant) => sum + Math.max(0, Math.round(toNumber(variant.stock))), 0)))),
-    material: normalizeMainMaterial(product.material || "铂金"),
+    material: normalizeMainMaterial(product.material || "White Gold"),
     main_stone: cleanText(product.mainStone, "培育钻石"),
     shape,
     carat: toNumber(product.carat, 1),
@@ -306,7 +311,10 @@ function rowToProduct(row = {}) {
         ? [row.image_url]
         : [];
   const materialImages = {
-    whiteGold: Array.isArray(richMedia.whiteGold) ? richMedia.whiteGold.filter(Boolean) : [],
+    whiteGold: [
+      ...(Array.isArray(richMedia.whiteGold) ? richMedia.whiteGold.filter(Boolean) : []),
+      ...(Array.isArray(richMedia.platinum) ? richMedia.platinum.filter(Boolean) : [])
+    ],
     roseGold: Array.isArray(richMedia.roseGold) ? richMedia.roseGold.filter(Boolean) : [],
     yellowGold: Array.isArray(richMedia.yellowGold) ? richMedia.yellowGold.filter(Boolean) : []
   };
