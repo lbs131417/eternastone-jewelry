@@ -52,7 +52,7 @@ const formatArrivalDate = (days = 23) => {
 
 const FRONTEND_PRODUCTS_STORAGE_KEY = "everastone.frontend.products";
 const FRONTEND_PRODUCTS_CACHE_VERSION_KEY = "everastone.frontend.products.cacheVersion";
-const FRONTEND_PRODUCTS_CACHE_VERSION = "empty-seed-2026-09-17";
+const FRONTEND_PRODUCTS_CACHE_VERSION = "db-only-2026-09-17";
 const CUSTOMER_SESSION_STORAGE_KEY = "everastone.customer.session";
 const CUSTOMER_PROFILES_STORAGE_KEY = "everastone.customer.profiles";
 const ANALYTICS_SESSION_STORAGE_KEY = "everastone.analytics.sessionId";
@@ -3211,8 +3211,6 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       const exists = items.some((item) => item.id === diamondItem.id);
       return exists ? items.map((item) => item.id === diamondItem.id ? { ...item, ...diamondItem } : item) : [diamondItem, ...items];
     });
-    const sharedProducts = mergeProductsById(readSharedFrontendProducts(), [diamondItem]);
-    window.localStorage.setItem(FRONTEND_PRODUCTS_STORAGE_KEY, JSON.stringify(sharedProducts));
   };
   const saveProduct = async () => {
     const materialImages = productDraft.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] };
@@ -3241,11 +3239,8 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       logAction(`${editingProductId ? "编辑" : "新增"}${activeProductCategory.label}商品 ${nextProduct.sku || payload.sku}，已同步 Supabase`);
       closeProductModal();
     } catch (error) {
-      setProductCatalog((items) => editingProductId ? items.map((item) => item.id === editingProductId ? payload : item) : [payload, ...items]);
-      syncProductToFrontend(payload);
-      setApiNotice(`Supabase 暂未写入：${error.message}。已先保存到本地演示数据。`);
-      logAction(`${editingProductId ? "编辑" : "新增"}${activeProductCategory.label}商品 ${payload.sku}，本地兜底保存`);
-      closeProductModal();
+      setApiNotice(`商品未保存：Supabase 写入失败。具体错误：${error.message}。请检查 VITE_API_BASE_URL、ADMIN_API_TOKEN、SUPABASE_SERVICE_ROLE_KEY、products 表权限/字段。`);
+      logAction(`${editingProductId ? "编辑" : "新增"}${activeProductCategory.label}商品 ${payload.sku} 失败：${error.message}`);
     } finally {
       setProductSaving(false);
     }
@@ -3257,15 +3252,15 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     try {
       await deleteStorefrontProduct(product.sku);
       logAction(`删除商品 ${product.sku}，已同步 Supabase`);
+      setProductCatalog((items) => items.filter((item) => item.id !== product.id));
+      setDiamonds((items) => items.filter((item) => item.id !== product.sku));
+      const sharedProducts = readSharedFrontendProducts().filter((item) => item.id !== product.sku);
+      window.localStorage.setItem(FRONTEND_PRODUCTS_STORAGE_KEY, JSON.stringify(sharedProducts));
+      if (editingProductId === product.id) closeProductModal();
     } catch (error) {
-      setApiNotice(`Supabase 暂未删除：${error.message}。已先从本地演示数据移除。`);
-      logAction(`删除商品 ${product.sku}，本地兜底删除`);
+      setApiNotice(`商品未删除：Supabase 删除失败。具体错误：${error.message}。请检查 ADMIN_API_TOKEN、后端 API 和数据库权限。`);
+      logAction(`删除商品 ${product.sku} 失败：${error.message}`);
     }
-    setProductCatalog((items) => items.filter((item) => item.id !== product.id));
-    setDiamonds((items) => items.filter((item) => item.id !== product.sku));
-    const sharedProducts = readSharedFrontendProducts().filter((item) => item.id !== product.sku);
-    window.localStorage.setItem(FRONTEND_PRODUCTS_STORAGE_KEY, JSON.stringify(sharedProducts));
-    if (editingProductId === product.id) closeProductModal();
   };
   const handleProductImageUpload = (event) => {
     const files = Array.from(event.target.files ?? []);
