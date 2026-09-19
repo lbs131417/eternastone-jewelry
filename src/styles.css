@@ -6803,6 +6803,17 @@ textarea {
   line-height: 1.65;
 }
 
+.product-card-caption {
+  display: block;
+  margin-top: 4px;
+  color: #9a7a3e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
 .card-material-swatches {
   display: flex;
   align-items: center;
@@ -12646,4 +12657,17 @@ main > .faq-page .faq-list details p {
   .variant-row.grouped {
     grid-template-columns: 1fr !important;
   }
+}
+
+.product-card .product-card-caption,
+.catalog-page .product-card .product-card-caption,
+.content-products .product-card .product-card-caption {
+  display: block !important;
+  margin-top: 4px !important;
+  color: #9a7a3e !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  line-height: 1.35 !important;
+  text-transform: uppercase !important;
 }

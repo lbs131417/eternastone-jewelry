@@ -272,15 +272,20 @@ const updateSeoMeta = ({ title, description }) => {
   ensureMeta('meta[property="og:description"]', { property: "og:description" }).setAttribute("content", description);
   ensureMeta('meta[property="og:type"]', { property: "og:type" }).setAttribute("content", "website");
 };
+const normalizeShapeKey = (value = "") => String(value || "round").toLowerCase() === "princess" ? "cushion" : String(value || "round").toLowerCase();
+const normalizeProductForDisplay = (product = {}) => ({ ...product, shape: normalizeShapeKey(product.shape) });
 const mergeProductsById = (base, additions) => {
-  const merged = new Map(base.filter((product) => !isDeprecatedSeedProduct(product)).map((product) => [product.id, product]));
-  additions.filter((product) => !isDeprecatedSeedProduct(product)).forEach((product) => merged.set(product.id, { ...merged.get(product.id), ...product }));
+  const merged = new Map(base.filter((product) => !isDeprecatedSeedProduct(product)).map((product) => [product.id, normalizeProductForDisplay(product)]));
+  additions.filter((product) => !isDeprecatedSeedProduct(product)).forEach((product) => merged.set(product.id, normalizeProductForDisplay({ ...merged.get(product.id), ...product })));
   return Array.from(merged.values());
 };
 
-const shapeLabel = (key) => shapes.find((shape) => shape.key === key)?.label ?? key;
-const shapeLabelEn = (key) => shapes.find((shape) => shape.key === key)?.label ?? key;
-const shapeKeyFromLabel = (value) => shapes.find((shape) => shape.zh === value || shape.key === value)?.key ?? "round";
+const shapeLabel = (key) => shapes.find((shape) => shape.key === normalizeShapeKey(key))?.label ?? key;
+const shapeLabelEn = (key) => shapes.find((shape) => shape.key === normalizeShapeKey(key))?.label ?? key;
+const shapeKeyFromLabel = (value) => {
+  const normalizedValue = normalizeShapeKey(value);
+  return shapes.find((shape) => shape.zh === value || shape.key === normalizedValue || shape.label.toLowerCase() === String(value).toLowerCase())?.key ?? "round";
+};
 const materialImageGroups = [
   { key: "whiteGold", label: "White Gold / Platinum", keywords: ["白金", "white gold", "white", "铂金", "platinum", "pure platinum", "pt", "950", "925"] },
   { key: "yellowGold", label: "Yellow Gold", keywords: ["黄金", "yellow"] },
@@ -323,7 +328,8 @@ const getMaterialPurity = (material = "", purity = "") => {
 };
 const getVariantPriceFromBase = (basePrice = 0, variant = {}) => {
   const base = Number(basePrice) || 0;
-  const carat = Number(variant.carat) || 1;
+  const isNoCaratVariant = variant.gender === "male" || variant.gender === "pair";
+  const carat = isNoCaratVariant ? 1 : Number(variant.carat) || 1;
   const material = getMainMaterial(variant.material);
   const purity = getMaterialPurity(material, variant.purity);
   const caratAdjustment = Math.max(0, carat - 1) * 530;
@@ -338,12 +344,14 @@ const getVariantPriceFromBase = (basePrice = 0, variant = {}) => {
 };
 const applyVariantPricing = (variants = [], basePrice = 0) => variants.map((variant) => ({
   ...variant,
+  gender: variant.gender === "male" ? "male" : variant.gender === "pair" ? "pair" : "female",
   material: getMainMaterial(variant.material),
   purity: getMaterialPurity(variant.material, variant.purity),
   price: String(getVariantPriceFromBase(basePrice, variant))
 }));
 const normalizeProductVariant = (variant = {}, fallbackMaterial = "White Gold", fallbackPrice = 0) => ({
-  carat: String(variant.carat ?? "1.00"),
+  gender: variant.gender === "male" ? "male" : variant.gender === "pair" ? "pair" : "female",
+  carat: variant.gender === "male" || variant.gender === "pair" ? "" : String(variant.carat ?? "1.00"),
   material: getMainMaterial(variant.material ?? fallbackMaterial),
   purity: getMaterialPurity(variant.material ?? fallbackMaterial, variant.purity),
   price: variant.price ?? fallbackPrice,
@@ -373,19 +381,53 @@ const getProductMedia = (product = {}, material = "") => {
 const getPrimaryProductImage = (product = {}) => {
   const materialImages = product.materialImages ?? {};
   const firstMaterialImage = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).find(Boolean);
-  return firstMaterialImage || product.images?.[0] || product.image || shapes.find((shape) => shape.key === product.shape)?.image;
+  return firstMaterialImage || product.images?.[0] || product.image || shapes.find((shape) => shape.key === normalizeShapeKey(product.shape))?.image;
 };
 const storefrontProductCategories = new Set(["engagement", "jewelry", "couple", "designer"]);
-const normalizeStorefrontCategory = (category = "") => category === "wedding" ? "engagement" : category;
-const getProductCategory = (product = {}) => {
-  const normalizedCategory = normalizeStorefrontCategory(product.category);
-  if (storefrontProductCategories.has(normalizedCategory)) return normalizedCategory;
+const coupleAdminCategories = new Set(["couple", "couple_pair", "couple_female", "couple_male"]);
+const productAdminCategories = new Set(["engagement", "jewelry", "couple_pair", "couple_female", "couple_male", "designer"]);
+const normalizeStorefrontCategory = (category = "") => {
+  if (category === "wedding") return "engagement";
+  if (coupleAdminCategories.has(category)) return "couple";
+  return category;
+};
+const getVariantAdminCategory = (product = {}) => {
+  const category = (product.variants ?? []).find((variant) => productAdminCategories.has(variant?.adminCategory))?.adminCategory;
+  return category || "";
+};
+const getIdentityAdminCategory = (product = {}) => {
   const identity = `${product.id ?? ""} ${product.sku ?? ""} ${product.name ?? ""} ${product.title ?? ""}`.toLowerCase();
-  if (/\b(cp|couple)[-_]/.test(identity) || identity.includes("matching") || identity.includes("couple") || identity.includes("对戒") || identity.includes("情侣")) return "couple";
+  if (/\bcouple_male[-_]/.test(identity)) return "couple_male";
+  if (/\bcouple_female[-_]/.test(identity)) return "couple_female";
+  if (/\bcouple_pair[-_]/.test(identity) || /\bcp[-_]/.test(identity) || identity.includes("matching") || identity.includes("couple wedding") || identity.includes("couple") || identity.includes("对戒") || identity.includes("情侣")) return "couple_pair";
   if (/\b(ds|des|designer)[-_]/.test(identity) || identity.includes("designer") || identity.includes("设计师")) return "designer";
   if (/\b(jw|jewelry)[-_]/.test(identity) || identity.includes("necklace") || identity.includes("earring") || identity.includes("bracelet") || identity.includes("项链") || identity.includes("耳") || identity.includes("手链")) return "jewelry";
+  return "";
+};
+const getProductCategory = (product = {}) => {
+  const variantCategory = getVariantAdminCategory(product);
+  if (variantCategory) return normalizeStorefrontCategory(variantCategory);
+  const identityCategory = getIdentityAdminCategory(product);
+  if (identityCategory) return normalizeStorefrontCategory(identityCategory);
+  const normalizedCategory = normalizeStorefrontCategory(product.category);
+  if (storefrontProductCategories.has(normalizedCategory)) return normalizedCategory;
   return "engagement";
 };
+const getProductAdminCategory = (product = {}) => {
+  const variantCategory = getVariantAdminCategory(product);
+  if (variantCategory) return variantCategory;
+  const identityCategory = getIdentityAdminCategory(product);
+  if (identityCategory) return identityCategory;
+  if (productAdminCategories.has(product.category)) return product.category;
+  if (normalizeStorefrontCategory(product.category) === "couple") return "couple_pair";
+  return getProductCategory(product);
+};
+const isFrontendCoupleProduct = (product = {}) => {
+  const adminCategory = getProductAdminCategory(product);
+  return adminCategory === "couple_pair" || adminCategory === "couple";
+};
+const usesNoCaratVariantMode = (category = "") => ["couple_pair", "couple_male"].includes(category);
+const defaultVariantGenderForCategory = (category = "") => category === "couple_pair" ? "pair" : category === "couple_male" ? "male" : "female";
 const getProductVariantCarats = (product = {}) => {
   const variantCarats = (product.variants ?? [])
     .map((variant) => Number(variant.carat))
@@ -396,6 +438,7 @@ const getProductVariantCarats = (product = {}) => {
 };
 const formatCaratValue = (carat) => Number(carat).toFixed(Number(carat) % 1 === 0 ? 0 : 2);
 const getProductCaratRangeLabel = (product = {}) => {
+  if (getProductCategory(product) === "couple" && product.totalCarat) return `${formatCaratValue(product.totalCarat)} total ct`;
   const carats = getProductVariantCarats(product);
   if (!carats.length) return "Custom ct";
   const min = carats[0];
@@ -422,7 +465,7 @@ const getProductFromPriceLabel = (product = {}) => `From ${money(Number(getLowes
 const containsChinese = (value = "") => /[\u3400-\u9fff]/.test(String(value));
 const getProductDisplayName = (product = {}) => {
   const rawName = product.name || product.title || "";
-  if (rawName && !containsChinese(rawName)) return rawName;
+  if (rawName) return rawName;
   const caratText = `${getProductCaratRangeLabel(product)} `;
   const shape = shapeLabel(product.shape);
   const category = getProductCategory(product);
@@ -433,7 +476,7 @@ const getProductDisplayName = (product = {}) => {
 };
 const getProductImageAlt = (product = {}) => product.imageAlt || product.name || getProductDisplayName(product) || `${shapeLabel(product.shape)} lab-grown diamond jewelry`;
 const getProductImageTitle = (product = {}) => product.imageTitle || undefined;
-const orderedCatalogShapeKeys = ["oval", "round", "marquise", "emerald", "princess"];
+const orderedCatalogShapeKeys = ["oval", "round", "marquise", "emerald", "cushion"];
 const catalogShapes = [
   ...orderedCatalogShapeKeys.map((key) => shapes.find((shape) => shape.key === key)).filter(Boolean),
   ...shapes.filter((shape) => !orderedCatalogShapeKeys.includes(shape.key))
@@ -459,7 +502,7 @@ const diamondFaceUpMm = {
   emerald: [5.0, 7.0],
   pear: [5.8, 8.6],
   asscher: [5.5, 5.5],
-  princess: [5.5, 5.5],
+  cushion: [6.0, 6.0],
   oval: [5.7, 8.1],
   heart: [6.6, 6.0],
   marquise: [4.4, 10.2],
@@ -744,12 +787,12 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
       label: "Engagement",
       target: "diamonds",
       mega: [
-        { title: "Diamond Shapes", items: [["Oval", "oval"], ["Round", "round"], ["Marquise", "marquise"], ["Emerald", "emerald"], ["Princess", "princess"], ["Pear", "pear"], ["Radiant", "radiant"]] },
+        { title: "Diamond Shapes", items: [["Oval", "oval"], ["Round", "round"], ["Marquise", "marquise"], ["Emerald", "emerald"], ["Cushion", "cushion"], ["Pear", "pear"], ["Radiant", "radiant"]] },
         { title: "Popular Diamonds", items: [["2 ct Oval Center Stone", null, "popularOval"], ["1.5 ct Round Center Stone", null, "popularRound"], ["2.5 ct Pear Center Stone", null, "popularPear"], ["3 ct Emerald Center Stone", null, "popularEmerald"]] },
         { title: "Setting Types", items: [["Solitaire", null, "settingSolitaire"], ["Halo", null, "settingHalo"], ["Pavé", null, "settingPave"], ["Three-Stone", null, "settingThreeStone"], ["Vintage", null, "settingVintage"], ["Ring Size Guide", null, "ringSizeGuide"]] }
       ]
     },
-    { key: "couple", label: "Matching", contentKey: "couple", mega: [{ title: "Ring Categories", items: [["Classic Bands", null, "coupleClassic"], ["Diamond Pairs", null, "coupleDiamond"], ["Minimal Slim Rings", null, "coupleMinimal"], ["Vintage Engraved Rings", null, "coupleVintage"]] }] },
+    { key: "couple", label: "Matching", contentKey: "couple" },
     { key: "designer", label: "Designer", contentKey: "designer" },
     { key: "custom", label: "Bespoke", contentKey: "custom" },
     { key: "story", label: "Story", contentKey: "story" },
@@ -881,6 +924,7 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
                   </div>
                 </div>
               ))}
+              <button onClick={() => openTarget(null, null, "couple")}>Matching Rings</button>
               <button onClick={() => openTarget(null, null, "designer")}>Designer Editions</button>
               <button onClick={() => openTarget(null, null, "story")}>Brand Story</button>
               <button onClick={() => openTarget("account")}><UserRound size={16} /> Sign in / Account</button>
@@ -924,7 +968,7 @@ function Home({ setPage, applyPreset }) {
     { title: "Round Lab-Grown Diamond", text: "1.50-2.00 ct", shape: "round", min: 1.5, max: 2, desc: "Full fire, timeless symmetry and a proposal classic that never feels dated." },
     { title: "Pear Lab-Grown Diamond", text: "2.50-3.00 ct", shape: "pear", min: 2.5, max: 3, desc: "A soft teardrop shape with romantic presence, designed to flatter the hand." }
   ];
-  const homeShapeKeys = ["oval", "round", "marquise", "emerald", "princess", "pear", "radiant"];
+  const homeShapeKeys = ["oval", "round", "marquise", "emerald", "cushion", "pear", "radiant"];
   const homeShapes = homeShapeKeys.map((key) => shapes.find((shape) => shape.key === key)).filter(Boolean);
   const handleHeroMove = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1102,7 +1146,7 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
   const filtered = useMemo(() => {
     const sorted = diamonds
       .filter((diamond) => getProductCategory(diamond) === "engagement")
-      .filter((diamond) => !filters.shape || diamond.shape === filters.shape)
+      .filter((diamond) => !filters.shape || normalizeShapeKey(diamond.shape) === filters.shape)
       .filter((diamond) => productMatchesCaratRange(diamond, filters.caratMin, filters.caratMax))
       .filter((diamond) => {
         const fromPrice = Number(getLowestPricedVariant(diamond)?.price) || Number(diamond.price) || 0;
@@ -1122,7 +1166,8 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
       if (filters.sort === "price-asc") return (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price);
       if (filters.sort === "price-desc") return (Number(getLowestPricedVariant(b)?.price) || b.price) - (Number(getLowestPricedVariant(a)?.price) || a.price);
       if (filters.sort === "new") return b.createdAt - a.createdAt;
-      return b.sold - a.sold;
+      if (filters.sort === "popular") return b.sold - a.sold;
+      return (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price);
     });
   }, [diamonds, filters]);
 
@@ -1146,7 +1191,7 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
       fluorescence: "",
       realPhoto: false,
       fast: false,
-      sort: "popular"
+      sort: "price-asc"
     });
 
   return (
@@ -1165,7 +1210,7 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
       <section className="mobile-catalog-tabs" aria-label="Mobile catalog shortcuts">
         <button className={!filters.shape ? "active" : ""} onClick={() => setValue("shape", "")}>All</button>
         <button onClick={() => setValue("sort", "new")}>New</button>
-        <button onClick={() => setValue("sort", "popular")}>Popular</button>
+        <button onClick={() => setValue("sort", "price-asc")}>Low Price</button>
         <button onClick={() => setValue("sort", filters.sort === "price-asc" ? "price-desc" : "price-asc")}>Price</button>
         <button onClick={() => setMobileFiltersOpen((open) => !open)}>Filter</button>
       </section>
@@ -1235,7 +1280,7 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
         <section className="results-area">
           <div className="results-toolbar">
             <span>{filtered.length} lab-grown diamond pieces found</span>
-            <label>Sort<select value={filters.sort} onChange={(event) => setValue("sort", event.target.value)}><option value="popular">Most Popular</option><option value="price-asc">Price: Low to High</option><option value="price-desc">Price: High to Low</option><option value="new">Newest First</option></select></label>
+            <label>Sort<select value={filters.sort} onChange={(event) => setValue("sort", event.target.value)}><option value="price-asc">Price: Low to High</option><option value="price-desc">Price: High to Low</option><option value="new">Newest First</option><option value="popular">Most Popular</option></select></label>
           </div>
           <div className="product-grid">
             {filtered.map((diamond) => (
@@ -1310,6 +1355,7 @@ function ProductCard({ product, openProduct, addToCart }) {
       />
       <div>
         <h3>{getProductDisplayName(product)}</h3>
+        {product.imageCaption ? <span className="product-card-caption">{product.imageCaption}</span> : null}
         <p>{getProductSpecSummary(product)} · {product.color} Color · {product.clarity} Clarity · {product.certificate}</p>
         <div className="card-price-row">
           <strong>{getProductFromPriceLabel(product)}</strong>
@@ -1439,7 +1485,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const visibleThumbs = productImages.slice(thumbStart, thumbStart + 4);
   const previewCarat = Number(selectedVariant?.carat) || product.carat || 1.5;
   const previewDiamondSize = getTryOnDiamondSize(product.shape, previewCarat);
-  const tryOnDiamondImage = shapes.find((shape) => shape.key === product.shape)?.image ?? product.image;
+  const tryOnDiamondImage = shapes.find((shape) => shape.key === normalizeShapeKey(product.shape))?.image ?? product.image;
   const displayPrice = Number(selectedVariant?.price) || product.price;
   const firstOrderPrice = Math.round(displayPrice * 0.9);
   const selectedMetalText = selectedVariant?.material === "Platinum" ? "Pure Platinum" : `${selectedVariant?.purity ?? "18K"} ${selectedVariant?.material ?? "White Gold"}`;
@@ -1457,24 +1503,40 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     .sort((a, b) => Number(b.sold ?? 0) - Number(a.sold ?? 0))
     .slice(0, 4);
   const showTryOn = !["couple", "jewelry"].includes(getProductCategory(product));
+  const isCoupleProduct = getProductCategory(product) === "couple";
+  const variantGenderValue = (variant = {}) => variant.gender === "male" ? "male" : variant.gender === "pair" ? "pair" : "female";
+  const selectedGender = variantGenderValue(selectedVariant);
   const variantFields = [
-    ["carat", "Diamond Carat", "ct"],
+    ...(isCoupleProduct ? [["gender", "Ring", ""]] : []),
+    ...(!isCoupleProduct || !["male", "pair"].includes(selectedGender) ? [["carat", isCoupleProduct ? "Female Total Carat" : "Diamond Carat", "ct"]] : []),
     ["material", "Metal", ""],
     ["purity", "Metal Purity", ""]
   ];
   const uniqueValues = (items, field) => [...new Set(items.map((variant) => String(variant?.[field] ?? "")).filter(Boolean))];
-  const variantsForCarat = variants.filter((variant) => String(variant.carat) === String(selectedVariant?.carat));
+  const variantsForGender = isCoupleProduct ? variants.filter((variant) => variantGenderValue(variant) === selectedGender) : variants;
+  const variantsForCarat = ["male", "pair"].includes(selectedGender) ? variantsForGender : variantsForGender.filter((variant) => String(variant.carat) === String(selectedVariant?.carat));
   const variantsForMaterial = variantsForCarat.filter((variant) => String(variant.material) === String(selectedVariant?.material));
   const variantOptions = {
-    carat: uniqueValues(variants, "carat"),
+    gender: uniqueValues(variants, "gender").length ? uniqueValues(variants, "gender") : ["female"],
+    carat: uniqueValues(variantsForGender, "carat"),
     material: uniqueValues(variantsForCarat.length ? variantsForCarat : variants, "material"),
     purity: uniqueValues(variantsForMaterial.length ? variantsForMaterial : variantsForCarat, "purity").filter((purity) => getPurityOptionsForMaterial(selectedVariant?.material).includes(purity))
+  };
+  const formatVariantOptionLabel = (field, value, suffix = "") => {
+    if (field === "gender" && value === "pair") return "Matching Pair";
+    if (field === "gender") return value === "male" ? "Male Ring" : "Female Ring";
+    return `${value}${suffix}`;
   };
   const updateVariantField = (field, value) => {
     let nextSelection = { ...selectedVariant, [field]: value };
 
+    if (field === "gender") {
+      const genderMatches = variants.filter((variant) => variantGenderValue(variant) === value);
+      nextSelection = genderMatches[0] ?? nextSelection;
+    }
+
     if (field === "carat") {
-      const caratMatches = variants.filter((variant) => String(variant.carat) === String(value));
+      const caratMatches = variants.filter((variant) => variantGenderValue(variant) === selectedGender && String(variant.carat) === String(value));
       const materialStillAvailable = caratMatches.some((variant) => String(variant.material) === String(selectedVariant?.material));
       nextSelection.material = materialStillAvailable ? selectedVariant?.material : caratMatches[0]?.material;
       const purityStillAvailable = caratMatches.some((variant) => String(variant.material) === String(nextSelection.material) && String(variant.purity) === String(selectedVariant?.purity));
@@ -1482,13 +1544,13 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     }
 
     if (field === "material") {
-      const materialMatches = variants.filter((variant) => String(variant.carat) === String(selectedVariant?.carat) && String(variant.material) === String(value));
+      const materialMatches = variants.filter((variant) => variantGenderValue(variant) === selectedGender && (["male", "pair"].includes(selectedGender) || String(variant.carat) === String(selectedVariant?.carat)) && String(variant.material) === String(value));
       const purityStillAvailable = materialMatches.some((variant) => String(variant.purity) === String(selectedVariant?.purity));
       nextSelection.purity = purityStillAvailable ? selectedVariant?.purity : materialMatches[0]?.purity;
     }
 
     const matchingIndex = variants.findIndex((variant) =>
-      ["carat", "material", "purity"].every((variantField) => String(variant?.[variantField] ?? "") === String(nextSelection?.[variantField] ?? ""))
+      ["gender", ...(["male", "pair"].includes(nextSelection.gender) ? [] : ["carat"]), "material", "purity"].every((variantField) => String(variantField === "gender" ? variantGenderValue(variant) : variant?.[variantField] ?? "") === String(variantField === "gender" ? variantGenderValue(nextSelection) : nextSelection?.[variantField] ?? ""))
     );
     if (matchingIndex >= 0) setVariantIndex(matchingIndex);
   };
@@ -1574,7 +1636,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
               <div className="spec-grid">
                 {[
                   ["Shape", shapeLabel(product.shape)],
-                  ["Carat", selectedVariant?.carat ?? product.carat.toFixed(2)],
+                  ["Carat", isCoupleProduct ? getProductCaratRangeLabel(product) : selectedVariant?.carat ?? product.carat.toFixed(2)],
                   ["Color", product.color],
                   ["Clarity", product.clarity],
                   ["Cut", product.cut],
@@ -1611,7 +1673,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
               {variantFields.map(([field, label, suffix]) => {
                 const values = variantOptions[field]?.length ? variantOptions[field] : field === "purity" ? getPurityOptionsForMaterial(selectedVariant?.material) : [];
                 const currentValue = values.includes(String(selectedVariant?.[field] ?? "")) ? String(selectedVariant?.[field] ?? "") : values[0];
-                return <label key={field}>{label}<select value={currentValue} onChange={(event) => updateVariantField(field, event.target.value)}>{values.map((value) => <option value={value} key={value}>{value}{suffix}</option>)}</select></label>;
+                return <label key={field}>{label}<select value={currentValue} onChange={(event) => updateVariantField(field, event.target.value)}>{values.map((value) => <option value={value} key={value}>{formatVariantOptionLabel(field, value, suffix)}</option>)}</select></label>;
               })}
             </div>
             <strong className="variant-price">Selected price: {money(displayPrice)}</strong>
@@ -2203,7 +2265,7 @@ const brandStorySections = [
 function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
   const dedicatedDesignerProducts = diamonds
     .filter((product) => getProductCategory(product) === "designer")
-    .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0));
+    .sort((a, b) => (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price));
   const featuredProducts = dedicatedDesignerProducts.slice(0, 5);
   const quickBuy = (product) => {
     const variant = getLowestPricedVariant(product);
@@ -2419,14 +2481,13 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
   const needsFilters = productCategory === "jewelry";
   const [search, setSearch] = useState("");
   const [shapeFilter, setShapeFilter] = useState("");
-  const [sort, setSort] = useState("popular");
-  const coupleMatchers = coupleProductMatchers[contentKey] ?? [];
+  const [sort, setSort] = useState("price");
   const contentProducts = productCategory ? diamonds
     .filter((product) => getProductCategory(product) === productCategory)
-    .filter((product) => !coupleMatchers.length || coupleMatchers.some((keyword) => `${product.name ?? ""} ${getProductDisplayName(product)} ${product.id}`.toLowerCase().includes(keyword.toLowerCase())))
+    .filter((product) => productCategory !== "couple" || isFrontendCoupleProduct(product))
     .filter((product) => !search || `${product.name ?? ""} ${getProductDisplayName(product)} ${product.id}`.toLowerCase().includes(search.toLowerCase()))
-    .filter((product) => !shapeFilter || product.shape === shapeFilter)
-    .sort((a, b) => sort === "price" ? a.price - b.price : sort === "new" ? b.createdAt - a.createdAt : b.sold - a.sold) : [];
+    .filter((product) => !shapeFilter || normalizeShapeKey(product.shape) === shapeFilter)
+    .sort((a, b) => sort === "new" ? b.createdAt - a.createdAt : sort === "popular" ? b.sold - a.sold : (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price)) : [];
   return (
     <main className={`utility-page content-page${contentKey === "story" ? " brand-story-page" : ""}${isLegalPage ? " legal-content-page" : ""}`}>
       <p className="eyebrow">{content.eyebrow}</p>
@@ -2475,18 +2536,7 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
         ))}
       </div> : null}
       {isCatalogPage ? (
-        <section className={isCouplePage ? "content-products couple-products-layout" : "content-products"}>
-          {isCouplePage ? (
-            <aside className="couple-subcategory-panel">
-              <span>Choose a Style</span>
-              {coupleSubcategories.map((item) => (
-                <button className={contentKey === item.key ? "active" : ""} key={item.key} onClick={() => setPage("content", { contentKey: item.key })}>
-                  <strong>{item.label}</strong>
-                  <small>{item.hint}</small>
-                </button>
-            ))}
-            </aside>
-          ) : null}
+        <section className="content-products">
           <div className="content-products-main">
             {needsFilters ? <div className="content-filter-bar">
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products" />
@@ -2495,9 +2545,9 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
                 {shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.label}</option>)}
               </select>
               <select value={sort} onChange={(event) => setSort(event.target.value)}>
-                <option value="popular">Most Popular</option>
                 <option value="price">Price: Low to High</option>
                 <option value="new">Newest First</option>
+                <option value="popular">Most Popular</option>
               </select>
             </div> : null}
             <div className="results-toolbar">
@@ -3089,6 +3139,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     mainStone: "培育钻石",
     shape: "round",
     carat: "1.50",
+    totalCarat: "",
     color: "E",
     clarity: "VS1",
     cut: "Excellent",
@@ -3109,17 +3160,28 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     materialImages: { whiteGold: [], roseGold: [], yellowGold: [] },
     videoUrls: [],
     variants: [
-      { carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: "8" }
+      { gender: "female", carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: "8" }
     ]
   };
   const productCategories = [
     { key: "engagement", label: "求婚钻戒" },
     { key: "jewelry", label: "首饰" },
-    { key: "couple", label: "对戒" },
+    { key: "couple_pair", label: "情侣对戒" },
+    { key: "couple_female", label: "女单戒" },
+    { key: "couple_male", label: "男单戒" },
     { key: "designer", label: "设计师款式" }
   ];
   const [productDraft, setProductDraft] = useState({
     ...emptyProductDraft
+  });
+  const buildEmptyProductDraft = (category = productTab) => ({
+    ...emptyProductDraft,
+    category,
+    sku: `${category.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
+    totalCarat: coupleAdminCategories.has(category) ? "" : "",
+    variants: usesNoCaratVariantMode(category)
+      ? applyVariantPricing([{ gender: defaultVariantGenderForCategory(category), carat: "", material: "White Gold", purity: "10K", price: "", stock: emptyProductDraft.stock || "8" }], "")
+      : applyVariantPricing([{ gender: "female", carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: emptyProductDraft.stock || "8" }], "")
   });
   const [productCatalog, setProductCatalog] = useState([]);
   const totalPrice = Math.round((Number(draft.carat) || 0) * (Number(draft.pricePerCarat) || 0));
@@ -3210,8 +3272,8 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const activeProductCategory = productCategories.find((category) => category.key === productTab) ?? productCategories[0];
   const currentProducts = productCatalog.filter((product) => {
     const keyword = `${product.name} ${product.sku} ${product.material} ${product.shape} ${product.status}`.toLowerCase();
-    return getProductCategory(product) === productTab && keyword.includes(productSearch.toLowerCase());
-  });
+    return getProductAdminCategory(product) === productTab && keyword.includes(productSearch.toLowerCase());
+  }).sort((a, b) => (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price));
   const openProductModal = (mode, product = null) => {
     if (product) {
       setEditingProductId(product.id);
@@ -3228,12 +3290,12 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     } else {
       setEditingProductId(null);
       setViewingProduct(null);
-      setProductDraft({ ...emptyProductDraft, sku: `${productTab.toUpperCase()}-${Date.now().toString(36).toUpperCase()}` });
+      setProductDraft(buildEmptyProductDraft(productTab));
     }
     setProductModal(mode);
   };
   const copyProduct = (product) => {
-    const category = getProductCategory(product);
+    const category = getProductAdminCategory(product);
     const sourceSku = product.sku || product.id || category.toUpperCase();
     const copySku = `${sourceSku}-COPY-${Date.now().toString(36).toUpperCase()}`;
     const basePrice = String(product.price ?? "");
@@ -3265,17 +3327,18 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const closeProductModal = () => {
     setEditingProductId(null);
     setViewingProduct(null);
-    setProductDraft({ ...emptyProductDraft, sku: `${productTab.toUpperCase()}-${Date.now().toString(36).toUpperCase()}` });
+    setProductDraft(buildEmptyProductDraft(productTab));
     setProductModal(null);
   };
   const syncProductToFrontend = (product) => {
     const firstVariant = getLowestPricedVariant(product);
     const diamondItem = {
       id: product.sku,
-      category: getProductCategory(product),
+      category: getProductAdminCategory(product),
       name: product.name,
       shape: shapeKeyFromLabel(product.shape),
       carat: Number(firstVariant?.carat ?? product.carat) || 1,
+      totalCarat: product.totalCarat ?? "",
       color: product.color,
       clarity: product.clarity,
       cut: product.cut,
@@ -3332,6 +3395,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       imageAlt: productDraft.name,
       imageTitle: productDraft.imageTitle ?? "",
       carat: representativeCarat,
+      totalCarat: coupleAdminCategories.has(productTab) ? productDraft.totalCarat : "",
       price: Number(firstSellableVariant?.price ?? productDraft.price) || 0,
       stock: totalStock,
       image: productDraft.image || allMaterialImages[0] || "",
@@ -3350,7 +3414,26 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     }
     try {
       const savedProduct = await saveStorefrontProduct(payload);
-      const nextProduct = savedProduct || payload;
+      const nextProduct = {
+        ...(savedProduct || {}),
+        ...payload,
+        id: savedProduct?.id || payload.id,
+        sku: savedProduct?.sku || payload.sku,
+        category: payload.category,
+        shape: payload.shape,
+        carat: payload.carat,
+        totalCarat: payload.totalCarat,
+        material: payload.material,
+        price: payload.price,
+        stock: payload.stock,
+        imageAlt: payload.imageAlt,
+        imageTitle: payload.imageTitle,
+        imageCaption: payload.imageCaption,
+        images: payload.images,
+        materialImages: payload.materialImages,
+        videoUrls: payload.videoUrls,
+        variants: payload.variants
+      };
       setProductCatalog((items) => editingProductId ? items.map((item) => item.id === editingProductId ? nextProduct : item) : [nextProduct, ...items]);
       syncProductToFrontend(nextProduct);
       logAction(`${editingProductId ? "编辑" : "新增"}${activeProductCategory.label}商品 ${nextProduct.sku || payload.sku}，已同步 Supabase`);
@@ -3474,19 +3557,33 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       ...current,
       variants: [
         ...(current.variants ?? []),
-        ...applyVariantPricing([{ carat: variantCaratOptions.includes(String(current.carat)) ? String(current.carat) : "1.00", material: current.variants?.[0]?.material || "White Gold", purity: getPurityOptionsForMaterial(current.variants?.[0]?.material || "White Gold")[0], price: "", stock: current.stock || "1" }], current.price)
+        ...applyVariantPricing([{ gender: "female", carat: variantCaratOptions.includes(String(current.carat)) ? String(current.carat) : "1.00", material: current.variants?.[0]?.material || "White Gold", purity: getPurityOptionsForMaterial(current.variants?.[0]?.material || "White Gold")[0], price: "", stock: current.stock || "1" }], current.price)
       ]
     }));
   };
   const addVariantCaratGroup = () => {
     setProductDraft((current) => {
-      const usedCarats = new Set((current.variants ?? []).map((variant) => String(variant.carat)));
+      const usedCarats = new Set((current.variants ?? []).filter((variant) => variant.gender !== "male").map((variant) => String(variant.carat)));
       const nextCarat = variantCaratOptions.find((carat) => !usedCarats.has(carat)) ?? variantCaratOptions[0];
       return {
         ...current,
         variants: [
           ...(current.variants ?? []),
-          ...applyVariantPricing([{ carat: nextCarat, material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price)
+          ...applyVariantPricing([{ gender: "female", carat: nextCarat, material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price)
+        ]
+      };
+    });
+  };
+  const addMaleVariantGroup = () => {
+    setProductDraft((current) => {
+      const variantGender = defaultVariantGenderForCategory(productTab);
+      const hasNoCaratGroup = (current.variants ?? []).some((variant) => variant.gender === variantGender);
+      if (hasNoCaratGroup) return current;
+      return {
+        ...current,
+        variants: [
+          ...(current.variants ?? []),
+          ...applyVariantPricing([{ gender: variantGender, carat: "", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price)
         ]
       };
     });
@@ -3494,14 +3591,15 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const addVariantMetalToCarat = (carat) => {
     setProductDraft((current) => {
       const variants = current.variants ?? [];
-      const groupVariants = variants.filter((variant) => String(variant.carat) === String(carat));
+      const isNoCaratGroup = carat === "no-carat";
+      const groupVariants = variants.filter((variant) => isNoCaratGroup ? variant.gender === "male" || variant.gender === "pair" : !["male", "pair"].includes(variant.gender) && String(variant.carat) === String(carat));
       const usedMaterials = new Set(groupVariants.map((variant) => getMainMaterial(variant.material)));
       const nextMaterial = mainMaterials.find((material) => !usedMaterials.has(material)) ?? "Yellow Gold";
       return {
         ...current,
         variants: [
           ...variants,
-          ...applyVariantPricing([{ carat, material: nextMaterial, purity: getPurityOptionsForMaterial(nextMaterial)[0], price: "", stock: current.stock || "1" }], current.price)
+          ...applyVariantPricing([{ gender: isNoCaratGroup ? defaultVariantGenderForCategory(productTab) : "female", carat: isNoCaratGroup ? "" : carat, material: nextMaterial, purity: getPurityOptionsForMaterial(nextMaterial)[0], price: "", stock: current.stock || "1" }], current.price)
         ]
       };
     });
@@ -3510,7 +3608,9 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     setProductDraft((current) => ({
       ...current,
       variants: (current.variants ?? []).map((variant) => {
-        if (String(variant.carat) !== String(carat) || getMainMaterial(variant.material) !== oldMaterial) return variant;
+        const isNoCaratGroup = carat === "no-carat";
+        const belongsToGroup = isNoCaratGroup ? variant.gender === "male" || variant.gender === "pair" : !["male", "pair"].includes(variant.gender) && String(variant.carat) === String(carat);
+        if (!belongsToGroup || getMainMaterial(variant.material) !== oldMaterial) return variant;
         const options = getPurityOptionsForMaterial(nextMaterial);
         const nextPurity = options.includes(variant.purity) ? variant.purity : options[0];
         const nextVariant = { ...variant, material: nextMaterial, purity: nextPurity };
@@ -3521,7 +3621,8 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const addVariantPurityToMaterial = (carat, material) => {
     setProductDraft((current) => {
       const variants = current.variants ?? [];
-      const groupVariants = variants.filter((variant) => String(variant.carat) === String(carat) && getMainMaterial(variant.material) === material);
+      const isNoCaratGroup = carat === "no-carat";
+      const groupVariants = variants.filter((variant) => (isNoCaratGroup ? variant.gender === "male" || variant.gender === "pair" : !["male", "pair"].includes(variant.gender) && String(variant.carat) === String(carat)) && getMainMaterial(variant.material) === material);
       const usedPurities = new Set(groupVariants.map((variant) => variant.purity ?? getMaterialPurity(variant.material)));
       const purityOptions = getPurityOptionsForMaterial(material);
       const nextPurity = purityOptions.find((purity) => !usedPurities.has(purity)) ?? purityOptions[0];
@@ -3529,15 +3630,16 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         ...current,
         variants: [
           ...variants,
-          ...applyVariantPricing([{ carat, material, purity: nextPurity, price: "", stock: current.stock || "1" }], current.price)
+          ...applyVariantPricing([{ gender: isNoCaratGroup ? defaultVariantGenderForCategory(productTab) : "female", carat: isNoCaratGroup ? "" : carat, material, purity: nextPurity, price: "", stock: current.stock || "1" }], current.price)
         ]
       };
     });
   };
   const removeVariantMaterialGroup = (carat, material) => {
     setProductDraft((current) => {
-      const nextVariants = (current.variants ?? []).filter((variant) => !(String(variant.carat) === String(carat) && getMainMaterial(variant.material) === material));
-      return { ...current, variants: nextVariants.length ? nextVariants : applyVariantPricing([{ carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price) };
+      const isNoCaratGroup = carat === "no-carat";
+      const nextVariants = (current.variants ?? []).filter((variant) => !((isNoCaratGroup ? variant.gender === "male" || variant.gender === "pair" : !["male", "pair"].includes(variant.gender) && String(variant.carat) === String(carat)) && getMainMaterial(variant.material) === material));
+      return { ...current, variants: nextVariants.length ? nextVariants : applyVariantPricing([{ gender: "female", carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price) };
     });
   };
   const updateVariantCaratGroup = (oldCarat, nextCarat) => {
@@ -3552,14 +3654,16 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   };
   const removeVariantCaratGroup = (carat) => {
     setProductDraft((current) => {
-      const nextVariants = (current.variants ?? []).filter((variant) => String(variant.carat) !== String(carat));
-      return { ...current, variants: nextVariants.length ? nextVariants : applyVariantPricing([{ carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price) };
+      const isNoCaratGroup = carat === "no-carat";
+      const nextVariants = (current.variants ?? []).filter((variant) => isNoCaratGroup ? !["male", "pair"].includes(variant.gender) : !(!["male", "pair"].includes(variant.gender) && String(variant.carat) === String(carat)));
+      return { ...current, variants: nextVariants.length ? nextVariants : applyVariantPricing([{ gender: "female", carat: "1.00", material: "White Gold", purity: "10K", price: "", stock: current.stock || "1" }], current.price) };
     });
   };
   const groupedVariants = (productDraft.variants ?? []).reduce((groups, variant, index) => {
-    const carat = variantCaratOptions.includes(String(variant.carat)) ? String(variant.carat) : "1.00";
+    const isNoCaratVariant = variant.gender === "male" || variant.gender === "pair";
+    const carat = isNoCaratVariant ? "no-carat" : variantCaratOptions.includes(String(variant.carat)) ? String(variant.carat) : "1.00";
     const existing = groups.find((group) => group.carat === carat);
-    const targetGroup = existing ?? { carat, items: [], materialGroups: [] };
+    const targetGroup = existing ?? { carat, gender: isNoCaratVariant ? variant.gender : "female", items: [], materialGroups: [] };
     if (!existing) groups.push(targetGroup);
     targetGroup.items.push({ variant, index });
     const material = getMainMaterial(variant.material);
@@ -3570,7 +3674,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   }, []).map((group) => ({
     ...group,
     materialGroups: group.materialGroups.sort((a, b) => mainMaterials.indexOf(a.material) - mainMaterials.indexOf(b.material))
-  })).sort((a, b) => Number(a.carat) - Number(b.carat));
+  })).sort((a, b) => (["male", "pair"].includes(a.gender) ? 1 : 0) - (["male", "pair"].includes(b.gender) ? 1 : 0) || Number(a.carat) - Number(b.carat));
   const removeVariant = (index) => {
     setProductDraft((current) => ({ ...current, variants: (current.variants ?? []).filter((_, variantIndex) => variantIndex !== index) }));
   };
@@ -3710,10 +3814,10 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
 
   useEffect(() => {
     const syncedProducts = diamonds
-      .filter((product) => productCategories.some((category) => category.key === getProductCategory(product)))
+      .filter((product) => productCategories.some((category) => category.key === getProductAdminCategory(product)))
       .map((product) => ({
         id: product.id,
-        category: getProductCategory(product),
+        category: getProductAdminCategory(product),
         name: product.name ?? `${shapeLabel(product.shape)}培育钻石商品`,
         sku: product.sku ?? product.id,
         price: Number(product.price) || 0,
@@ -3722,6 +3826,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         mainStone: product.mainStone ?? "培育钻石",
         shape: product.shape,
         carat: String(product.carat ?? "1.00"),
+        totalCarat: product.totalCarat ?? "",
         color: product.color ?? "E",
         clarity: product.clarity ?? "VS1",
         cut: product.cut ?? "Excellent",
@@ -3836,7 +3941,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                     return (
                       <div className="admin-row" key={product.id}>
                         <span>{thumbImage ? <img className="admin-product-thumb" src={thumbImage} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} /> : "无图"}</span>
-                        <span>{product.name}</span>
+                        <span>{getProductDisplayName(product)}</span>
                         <span>{product.sku}</span>
                         <span>{product.material} / {shapeLabel(product.shape)} / {getProductSpecSummary(product)} / {product.color} / {product.clarity}</span>
                         <strong>{getProductFromPriceLabel(product)}</strong>
@@ -3946,6 +4051,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <label><span>主石 / 宝石属性</span><input value={productDraft.mainStone} onChange={(event) => setProductDraft({ ...productDraft, mainStone: event.target.value })} placeholder="例如：培育钻石" /></label>
                             <h4>前台筛选属性</h4>
                             <label><span>钻石形状</span><select value={productDraft.shape} onChange={(event) => setProductDraft({ ...productDraft, shape: event.target.value })}>{shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}</select></label>
+                            {coupleAdminCategories.has(productTab) ? <label><span>总克拉数</span><input type="number" min="0" step="0.01" value={productDraft.totalCarat ?? ""} onChange={(event) => setProductDraft({ ...productDraft, totalCarat: event.target.value })} placeholder="例如：0.50" /></label> : null}
                             <label><span>颜色等级</span><select value={productDraft.color} onChange={(event) => setProductDraft({ ...productDraft, color: event.target.value })}>{colors.map((item) => <option key={item}>{item}</option>)}</select></label>
                             <label><span>净度等级</span><select value={productDraft.clarity} onChange={(event) => setProductDraft({ ...productDraft, clarity: event.target.value })}>{clarities.map((item) => <option key={item}>{item}</option>)}</select></label>
                             <label><span>切工等级</span><select value={productDraft.cut} onChange={(event) => setProductDraft({ ...productDraft, cut: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -3967,16 +4073,21 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                                 <label><span>基础商品价格 USD</span><input type="number" min="0" step="1" value={productDraft.price} onChange={(event) => updateBaseVariantPrice(event.target.value)} placeholder="例如：2480" /></label>
                                 <label><span>统一库存</span><input value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: event.target.value })} placeholder="例如：8" /></label>
                                 <button className="ghost-btn" onClick={() => applyVariantStockToAll(productDraft.stock || "0")}>应用到全部规格</button>
-                                <button className="ghost-btn" onClick={addVariantCaratGroup}>添加克拉组</button>
+                                {!usesNoCaratVariantMode(productTab) ? <button className="ghost-btn" onClick={addVariantCaratGroup}>{productTab === "couple_female" ? "添加女戒克拉组" : "添加克拉组"}</button> : null}
+                                {usesNoCaratVariantMode(productTab) ? <button className="ghost-btn" onClick={addMaleVariantGroup} disabled={(productDraft.variants ?? []).some((variant) => variant.gender === defaultVariantGenderForCategory(productTab))}>{productTab === "couple_pair" ? "添加情侣对戒规格" : "添加男戒规格"}</button> : null}
                               </div>
                             </div>
                             {groupedVariants.map((group) => (
                               <section className="variant-carat-group" key={group.carat}>
                                 <div className="variant-carat-head">
-                                  <label><span>主石克拉</span><select value={group.carat} onChange={(event) => updateVariantCaratGroup(group.carat, event.target.value)}>{variantCaratOptions.map((carat) => <option key={carat} value={carat}>{Number(carat).toFixed(0)} ct</option>)}</select></label>
+                                  {["male", "pair"].includes(group.gender) ? (
+                                    <label><span>规格类型</span><input value={group.gender === "pair" ? "情侣对戒规格（无需克拉数）" : "男戒规格（无需克拉数）"} readOnly /></label>
+                                  ) : (
+                                    <label><span>{productTab === "couple_female" ? "女戒克拉" : "主石克拉"}</span><select value={group.carat} onChange={(event) => updateVariantCaratGroup(group.carat, event.target.value)}>{variantCaratOptions.map((carat) => <option key={carat} value={carat}>{Number(carat).toFixed(0)} ct</option>)}</select></label>
+                                  )}
                                   <div>
                                     <button className="ghost-btn" onClick={() => addVariantMetalToCarat(group.carat)} disabled={group.materialGroups.length >= mainMaterials.length}>添加戒托材质</button>
-                                    <button className="ghost-btn" onClick={() => removeVariantCaratGroup(group.carat)} disabled={groupedVariants.length <= 1}>删除克拉组</button>
+                                    <button className="ghost-btn" onClick={() => removeVariantCaratGroup(group.carat)} disabled={groupedVariants.length <= 1}>{group.gender === "pair" ? "删除情侣对戒规格" : group.gender === "male" ? "删除男戒规格" : "删除克拉组"}</button>
                                   </div>
                                 </div>
                                 {group.materialGroups.map((materialGroup) => (
@@ -4019,7 +4130,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
               <h2>类目管理</h2>
               <div className="admin-columns">
                 <article><h3>一级类目</h3>{["订婚戒指", "情侣对戒", "日常珠宝", "定制戒指"].map((item, index) => <p key={item}>#{index + 1} {item} / Enabled / SEO 可编辑</p>)}</article>
-                <article><h3>二级子类目</h3><p>圆形钻戒、祖母绿钻戒、水滴钻戒、公主方钻戒、复古款钻戒、素圈对戒、耳饰、项链、手链。</p></article>
+                <article><h3>二级子类目</h3><p>圆形钻戒、祖母绿钻戒、水滴钻戒、长垫形钻戒、复古款钻戒、素圈对戒、耳饰、项链、手链。</p></article>
                 <article><h3>筛选标签管理</h3>{optionGroups.map(([title, list]) => <p key={title}>{title}：{list.join(" / ")}</p>)}</article>
               </div>
             </section>
@@ -4485,14 +4596,14 @@ const initialFilters = {
   fluorescence: "",
   realPhoto: false,
   fast: false,
-  sort: "popular"
+  sort: "price-asc"
 };
 
 const adminSeedProducts = [];
 
 const categorySeedProducts = [
   { id: "CP-CLASSIC-101", category: "couple", name: "经典素圈情侣对戒", shape: "round", carat: 0.1, color: "G", clarity: "VS1", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "IGI", fluorescence: "None", depth: "62.0%", table: "58%", ratio: "1.00", price: 980, image: shapes.find((shape) => shape.key === "round")?.image, images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.10", material: "18K 白金", price: 980 }, { carat: "0.20", material: "铂金", price: 1280 }, { carat: "0.30", material: "18K 黄金", price: 1580 }], fast: true, realPhoto: true, createdAt: 31, sold: 66 },
-  { id: "CP-DIAMOND-102", category: "couple", name: "半圈排钻情侣对戒", shape: "princess", carat: 0.35, color: "F", clarity: "VS2", cut: "Excellent", polish: "Excellent", symmetry: "Very Good", certificate: "IGI", fluorescence: "Faint", depth: "68.0%", table: "69%", ratio: "1.00", price: 1860, image: shapes.find((shape) => shape.key === "princess")?.image, images: [shapes.find((shape) => shape.key === "princess")?.image], variants: [{ carat: "0.25", material: "14K 白金", price: 1480 }, { carat: "0.35", material: "18K 白金", price: 1860 }, { carat: "0.50", material: "铂金", price: 2460 }], fast: true, realPhoto: true, createdAt: 32, sold: 51 },
+  { id: "CP-DIAMOND-102", category: "couple", name: "半圈排钻情侣对戒", shape: "cushion", carat: 0.35, totalCarat: 0.35, color: "F", clarity: "VS2", cut: "Excellent", polish: "Excellent", symmetry: "Very Good", certificate: "IGI", fluorescence: "Faint", depth: "68.0%", table: "69%", ratio: "1.00", price: 1860, image: shapes.find((shape) => shape.key === "cushion")?.image, images: [shapes.find((shape) => shape.key === "cushion")?.image], variants: [{ carat: "0.25", material: "14K 白金", price: 1480 }, { carat: "0.35", material: "18K 白金", price: 1860 }, { carat: "0.50", material: "铂金", price: 2460 }], fast: true, realPhoto: true, createdAt: 32, sold: 51 },
   { id: "CP-MINIMAL-103", category: "couple", name: "极简窄款点钻对戒", shape: "round", carat: 0.18, color: "E", clarity: "VS1", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "GIA", fluorescence: "None", depth: "61.9%", table: "57%", ratio: "1.00", price: 1360, image: shapes.find((shape) => shape.key === "round")?.image, images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.10", material: "14K 黄金", price: 1080 }, { carat: "0.18", material: "18K 白金", price: 1360 }, { carat: "0.25", material: "铂金", price: 1760 }], fast: true, realPhoto: true, createdAt: 33, sold: 43 },
   { id: "CP-VINTAGE-104", category: "couple", name: "复古雕花情侣对戒", shape: "oval", carat: 0.3, color: "G", clarity: "VS2", cut: "Very Good", polish: "Excellent", symmetry: "Very Good", certificate: "IGI", fluorescence: "None", depth: "61.5%", table: "58%", ratio: "1.36", price: 1680, image: shapes.find((shape) => shape.key === "oval")?.image, images: [shapes.find((shape) => shape.key === "oval")?.image], variants: [{ carat: "0.20", material: "18K 黄金", price: 1380 }, { carat: "0.30", material: "玫瑰金", price: 1680 }, { carat: "0.50", material: "铂金", price: 2380 }], fast: true, realPhoto: true, createdAt: 34, sold: 37 },
   { id: "JW-STUD-201", category: "jewelry", name: "圆形培育钻石耳钉", shape: "round", carat: 0.5, color: "E", clarity: "VS1", cut: "Excellent", polish: "Excellent", symmetry: "Excellent", certificate: "IGI", fluorescence: "None", depth: "62.1%", table: "57%", ratio: "1.00", price: 880, image: shapes.find((shape) => shape.key === "round")?.image, images: [shapes.find((shape) => shape.key === "round")?.image], variants: [{ carat: "0.30", material: "14K 白金", price: 680 }, { carat: "0.50", material: "18K 白金", price: 880 }, { carat: "1.00", material: "铂金", price: 1580 }], fast: true, realPhoto: true, createdAt: 35, sold: 72 },

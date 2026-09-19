@@ -3,13 +3,13 @@ create extension if not exists pgcrypto;
 create table if not exists public.products (
   id text primary key,
   sku text not null unique,
-  category text not null check (category in ('engagement', 'jewelry', 'couple', 'wedding', 'designer')),
+  category text not null check (category in ('engagement', 'jewelry', 'couple', 'couple_pair', 'couple_female', 'couple_male', 'wedding', 'designer')),
   name text not null,
   price numeric(12, 2) not null default 0,
   stock integer not null default 0,
   material text not null default '18K 白金',
   main_stone text not null default '培育钻石',
-  shape text not null check (shape in ('round', 'emerald', 'pear', 'asscher', 'princess', 'oval', 'heart', 'marquise', 'radiant')),
+  shape text not null check (shape in ('round', 'emerald', 'pear', 'asscher', 'princess', 'cushion', 'oval', 'heart', 'marquise', 'radiant')),
   carat numeric(6, 2) not null default 1,
   color text not null default 'E',
   clarity text not null default 'VS1',
@@ -50,6 +50,7 @@ alter table public.products add column if not exists material text not null defa
 alter table public.products add column if not exists main_stone text not null default '培育钻石';
 alter table public.products add column if not exists shape text not null default 'round';
 alter table public.products add column if not exists carat numeric(6, 2) not null default 1;
+alter table public.products add column if not exists total_carat numeric(6, 2);
 alter table public.products add column if not exists color text not null default 'E';
 alter table public.products add column if not exists clarity text not null default 'VS1';
 alter table public.products add column if not exists cut text not null default 'Excellent';
@@ -80,7 +81,22 @@ alter table public.products
 
 alter table public.products
   add constraint products_category_check
-  check (category in ('engagement', 'jewelry', 'couple', 'wedding', 'designer'));
+  check (category in ('engagement', 'jewelry', 'couple', 'couple_pair', 'couple_female', 'couple_male', 'wedding', 'designer'));
+
+alter table public.products
+  drop constraint if exists products_shape_check;
+
+update public.products
+set shape = 'cushion'
+where shape = 'princess';
+
+alter table public.products
+  add constraint products_shape_check
+  check (shape in ('round', 'emerald', 'pear', 'asscher', 'princess', 'cushion', 'oval', 'heart', 'marquise', 'radiant'));
+
+update public.products
+set category = 'couple_pair'
+where category = 'couple';
 
 update public.products
 set sku = id

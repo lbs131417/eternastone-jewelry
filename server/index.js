@@ -32,8 +32,13 @@ const paypalMode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase();
 const paypalApiBase = paypalMode === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 const siteUrl = (process.env.SITE_URL || "https://www.everastone.com").replace(/\/$/, "");
 
-const allowedShapes = new Set(["round", "emerald", "pear", "asscher", "princess", "oval", "heart", "marquise", "radiant"]);
-const allowedCategories = new Set(["engagement", "jewelry", "couple", "wedding", "designer"]);
+const allowedShapes = new Set(["round", "emerald", "pear", "asscher", "cushion", "oval", "heart", "marquise", "radiant"]);
+const normalizeShape = (shape = "") => {
+  const value = cleanText(shape, "round").toLowerCase();
+  if (value === "princess") return "cushion";
+  return allowedShapes.has(value) ? value : "round";
+};
+const allowedCategories = new Set(["engagement", "jewelry", "couple", "couple_pair", "couple_female", "couple_male", "wedding", "designer"]);
 const allowedOrderStatuses = new Set(["待付款", "已付款", "制作中", "已发货", "已完成", "已取消", "退款中", "已退款"]);
 const allowedPaymentStatuses = new Set(["待付款", "已付款", "退款中", "已退款", "支付失败", "已取消"]);
 const defaultBlogPosts = [
@@ -234,8 +239,10 @@ ${[...staticUrls, ...blogUrls].map((item) => `  <url>
 
 function productToRow(product = {}) {
   const sku = cleanText(product.sku || product.id || `SKU-${nanoid(8).toUpperCase()}`);
-  const shape = allowedShapes.has(product.shape) ? product.shape : "round";
-  const category = allowedCategories.has(product.category) ? product.category : "engagement";
+  const displayShape = normalizeShape(product.shape);
+  const requestedCategory = allowedCategories.has(product.category) ? product.category : "engagement";
+  const category = requestedCategory.startsWith("couple_") ? "couple" : requestedCategory;
+  const shape = displayShape === "cushion" ? "princess" : displayShape;
   const images = Array.isArray(product.images) ? product.images.filter(Boolean) : product.image ? [product.image] : [];
   const materialImages = product.materialImages ?? {};
   const normalizedMaterialImages = {
@@ -250,7 +257,11 @@ function productToRow(product = {}) {
   const hasRichMedia = Object.values(normalizedMaterialImages).some((items) => items.length) || videoUrls.length;
   const variants = Array.isArray(product.variants)
     ? product.variants.map((variant) => ({
-        carat: cleanText(variant.carat, "1.00"),
+        adminCategory: requestedCategory,
+        displayShape,
+        totalCarat: product.totalCarat === "" || product.totalCarat == null ? "" : toNumber(product.totalCarat, ""),
+        gender: variant.gender === "male" ? "male" : variant.gender === "pair" ? "pair" : "female",
+        carat: variant.gender === "male" || variant.gender === "pair" ? "" : cleanText(variant.carat, "1.00"),
         material: normalizeMainMaterial(variant.material || product.material || "White Gold"),
         purity: normalizePurity(variant.material || product.material || "White Gold", variant.purity),
         price: toNumber(variant.price, product.price),
@@ -300,6 +311,16 @@ function productToRow(product = {}) {
   };
 }
 
+function inferAdminCategoryFromIdentity(product = {}) {
+  const identity = `${product.id ?? ""} ${product.sku ?? ""} ${product.name ?? ""} ${product.title ?? ""}`.toLowerCase();
+  if (/\bcouple_male[-_]/.test(identity)) return "couple_male";
+  if (/\bcouple_female[-_]/.test(identity)) return "couple_female";
+  if (/\bcouple_pair[-_]/.test(identity) || /\bcp[-_]/.test(identity) || identity.includes("matching") || identity.includes("couple wedding") || identity.includes("couple") || identity.includes("对戒") || identity.includes("情侣")) return "couple_pair";
+  if (/\b(ds|des|designer)[-_]/.test(identity) || identity.includes("designer") || identity.includes("设计师")) return "designer";
+  if (/\b(jw|jewelry)[-_]/.test(identity) || identity.includes("necklace") || identity.includes("earring") || identity.includes("bracelet") || identity.includes("项链") || identity.includes("耳") || identity.includes("手链")) return "jewelry";
+  return "";
+}
+
 function rowToProduct(row = {}) {
   const rawImages = row.images;
   const richMedia = rawImages && !Array.isArray(rawImages) && typeof rawImages === "object" ? rawImages : {};
@@ -319,6 +340,13 @@ function rowToProduct(row = {}) {
     yellowGold: Array.isArray(richMedia.yellowGold) ? richMedia.yellowGold.filter(Boolean) : []
   };
   const videoUrls = Array.isArray(richMedia.videos) ? richMedia.videos.filter(Boolean) : [];
+  const variants = Array.isArray(row.variants) ? row.variants : [];
+  const variantMetadata = variants.find((variant) => variant && typeof variant === "object" && (variant.adminCategory || variant.displayShape || variant.totalCarat));
+  const inferredAdminCategory = inferAdminCategoryFromIdentity({
+    id: row.id,
+    sku: row.sku,
+    name: row.name
+  });
   const fallbackImage = row.image_url
     || defaultImages[0]
     || materialImages.whiteGold[0]
@@ -329,14 +357,15 @@ function rowToProduct(row = {}) {
   return {
     id: row.id,
     sku: row.sku || row.id,
-    category: row.category,
+    category: variantMetadata?.adminCategory || inferredAdminCategory || row.category,
     name: row.name,
     price: Number(row.price) || 0,
     stock: Number(row.stock) || 0,
     material: row.material,
     mainStone: row.main_stone,
-    shape: allowedShapes.has(row.shape) ? row.shape : "round",
+    shape: normalizeShape(variantMetadata?.displayShape || row.shape),
     carat: Number(row.carat) || 1,
+    totalCarat: row.total_carat == null ? variantMetadata?.totalCarat ?? "" : Number(row.total_carat),
     color: row.color,
     clarity: row.clarity,
     cut: row.cut,
@@ -357,7 +386,7 @@ function rowToProduct(row = {}) {
     images: defaultImages.length ? defaultImages : fallbackImage ? [fallbackImage] : [],
     materialImages,
     videoUrls,
-    variants: Array.isArray(row.variants) ? row.variants : [],
+    variants,
     fast: Boolean(row.fast),
     realPhoto: Boolean(row.real_photo),
     sold: Number(row.sold) || 0,
