@@ -21,6 +21,7 @@ import {
   ShoppingBag,
   Sparkles,
   Star,
+  Trash2,
   Truck,
   UserRound,
   X,
@@ -1429,6 +1430,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const [stickyActionsVisible, setStickyActionsVisible] = useState(false);
   const [mobileImageOpen, setMobileImageOpen] = useState(false);
   const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
+  const imageTouchStartRef = useRef(null);
   const [thumbStart, setThumbStart] = useState(0);
   const [specsOpen, setSpecsOpen] = useState(true);
   const [descriptionOpen, setDescriptionOpen] = useState(true);
@@ -1560,6 +1562,21 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const changeImage = (direction) => {
     setActiveImageIndex((index) => (index + direction + productImages.length) % productImages.length);
   };
+  const handleImageTouchStart = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    imageTouchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const handleImageTouchEnd = (event) => {
+    const start = imageTouchStartRef.current;
+    const touch = event.changedTouches?.[0];
+    imageTouchStartRef.current = null;
+    if (!start || !touch || productImages.length < 2) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
+    changeImage(deltaX < 0 ? 1 : -1);
+  };
   const handleGalleryMove = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setZoomPosition({
@@ -1605,6 +1622,8 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
           <div
             className="gallery-main"
             onPointerMove={handleGalleryMove}
+            onTouchStart={handleImageTouchStart}
+            onTouchEnd={handleImageTouchEnd}
             onClick={openMobileImage}
             style={{ "--zoom-x": `${zoomPosition.x}%`, "--zoom-y": `${zoomPosition.y}%` }}
           >
@@ -1761,9 +1780,11 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
         </div>
       ) : null}
       {mobileImageOpen ? (
-        <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="Product image preview" onClick={() => setMobileImageOpen(false)}>
+        <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="Product image preview" onClick={() => setMobileImageOpen(false)} onTouchStart={handleImageTouchStart} onTouchEnd={handleImageTouchEnd}>
           <button className="ghost-btn" onClick={() => setMobileImageOpen(false)}>Close</button>
+          {productImages.length > 1 ? <button className="lightbox-nav prev" onClick={(event) => { event.stopPropagation(); changeImage(-1); }} aria-label="Previous image">‹</button> : null}
           <img src={activeImage} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} />
+          {productImages.length > 1 ? <button className="lightbox-nav next" onClick={(event) => { event.stopPropagation(); changeImage(1); }} aria-label="Next image">›</button> : null}
         </div>
       ) : null}
       <section className="section compact">
@@ -1783,8 +1804,25 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   );
 }
 
-function Cart({ cart, setCart, setPage }) {
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+function Cart({ cart, setCart, setPage, setCheckoutCart }) {
+  const [selectedCartIds, setSelectedCartIds] = useState(() => new Set(cart.map((item) => item.cartId)));
+  const previousCartIdsRef = useRef(new Set(cart.map((item) => item.cartId)));
+  useEffect(() => {
+    const previousIds = previousCartIdsRef.current;
+    const validIds = new Set(cart.map((item) => item.cartId));
+    setSelectedCartIds((current) => {
+      const next = new Set([...current].filter((id) => validIds.has(id)));
+      cart.forEach((item) => {
+        if (!previousIds.has(item.cartId)) next.add(item.cartId);
+      });
+      return next;
+    });
+    previousCartIdsRef.current = validIds;
+  }, [cart]);
+  const selectedItems = cart.filter((item) => selectedCartIds.has(item.cartId));
+  const selectedCount = selectedItems.reduce((sum, item) => sum + item.qty, 0);
+  const allSelected = cart.length > 0 && selectedCartIds.size === cart.length;
+  const subtotal = selectedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = subtotal * 0.1;
   const tax = subtotal * 0.075;
   const shipping = subtotal > 0 ? 95 : 0;
@@ -1792,6 +1830,17 @@ function Cart({ cart, setCart, setPage }) {
 
   const updateQty = (id, qty) => setCart((items) => items.map((item) => item.cartId === id ? { ...item, qty: Math.max(1, qty) } : item));
   const removeItem = (id) => setCart((items) => items.filter((item) => item.cartId !== id));
+  const toggleItem = (id) => setSelectedCartIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const toggleAll = () => setSelectedCartIds(allSelected ? new Set() : new Set(cart.map((item) => item.cartId)));
+  const checkoutSelected = () => {
+    setCheckoutCart(selectedItems);
+    setPage("checkout");
+  };
 
   return (
     <main className="utility-page cart-page">
@@ -1811,14 +1860,23 @@ function Cart({ cart, setCart, setPage }) {
         <section className="cart-list">
           {cart.length === 0 ? <p>Your bag is empty. Start by choosing a lab-grown diamond ring.</p> : cart.map((item) => (
             <article className="cart-item" key={item.cartId}>
+              <button className={selectedCartIds.has(item.cartId) ? "cart-select-btn selected" : "cart-select-btn"} onClick={() => toggleItem(item.cartId)} aria-label={`${selectedCartIds.has(item.cartId) ? "Unselect" : "Select"} ${getProductDisplayName(item)}`} type="button">
+                {selectedCartIds.has(item.cartId) ? "✓" : ""}
+              </button>
               <img src={item.image} alt={containsChinese(item.imageAlt || item.title) ? getProductDisplayName(item) : item.imageAlt || item.title} title={item.imageTitle || undefined} />
               <div>
                 <h3>{getProductDisplayName(item)}</h3>
                 <p>{item.metal} · {item.size}</p>
                 <strong>{money(item.price)}</strong>
               </div>
-              <input type="number" min="1" value={item.qty} onChange={(event) => updateQty(item.cartId, Number(event.target.value))} />
-              <button className="text-link" onClick={() => removeItem(item.cartId)}>Remove</button>
+              <div className="cart-qty-stepper" aria-label={`Quantity for ${getProductDisplayName(item)}`}>
+                <button type="button" onClick={() => updateQty(item.cartId, item.qty - 1)} aria-label="Decrease quantity">−</button>
+                <span>{item.qty}</span>
+                <button type="button" onClick={() => updateQty(item.cartId, item.qty + 1)} aria-label="Increase quantity">+</button>
+              </div>
+              <button className="cart-remove-btn" onClick={() => removeItem(item.cartId)} aria-label={`Remove ${getProductDisplayName(item)} from bag`} title="Remove">
+                <Trash2 size={16} />
+              </button>
             </article>
           ))}
           {cart.length > 0 ? <button className="ghost-btn" onClick={() => setCart([])}>Clear Bag</button> : null}
@@ -1830,7 +1888,7 @@ function Cart({ cart, setCart, setPage }) {
           <p><span>Estimated tax</span><strong>{money(tax)}</strong></p>
           <p><span>Insured shipping</span><strong>{money(shipping)}</strong></p>
           <p className="summary-total"><span>Total</span><strong>{money(total)}</strong></p>
-          <button className="primary-btn full" disabled={!cart.length} onClick={() => setPage("checkout")}>Checkout</button>
+          <button className="primary-btn full" disabled={!selectedItems.length} onClick={checkoutSelected}>Checkout</button>
         </aside>
       </div>
       <div className="mobile-cart-promo" aria-hidden={!cart.length}>
@@ -1838,12 +1896,12 @@ function Cart({ cart, setCart, setPage }) {
         <span>First order 10% off · insured delivery included at checkout</span>
       </div>
       <div className="mobile-cart-checkout-bar">
-        <label><input type="checkbox" readOnly checked={cart.length > 0} /> All</label>
+        <label><input type="checkbox" readOnly checked={allSelected} onChange={toggleAll} /> All</label>
         <div>
           <strong>{money(total)}</strong>
           <small>Saved {money(discount)}</small>
         </div>
-        <button disabled={!cart.length} onClick={() => setPage("checkout")}>Checkout ({cart.length})</button>
+        <button disabled={!selectedItems.length} onClick={checkoutSelected}>Checkout ({selectedCount})</button>
       </div>
     </main>
   );
@@ -2273,7 +2331,7 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
   const dedicatedDesignerProducts = diamonds
     .filter((product) => getProductCategory(product) === "designer")
     .sort((a, b) => (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price));
-  const quickBuy = (product) => {
+  const quickAdd = (product) => {
     const variant = getLowestPricedVariant(product);
     addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
   };
@@ -2301,7 +2359,7 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
                   <strong>{getProductFromPriceLabel(product)}</strong>
                   <div className="designer-card-actions">
                     <button className="gold-btn" onClick={() => openProduct(product.id)}>View Details</button>
-                    <button className="redline-btn" onClick={() => quickBuy(product)}>Buy Now</button>
+                    <button className="redline-btn" onClick={() => quickAdd(product)}>Add to Bag</button>
                   </div>
                 </div>
               </div>
@@ -4646,6 +4704,7 @@ export function App() {
   const [diamonds, setDiamonds] = useState(() => mergeProductsById(initialFrontendProducts, readSharedFrontendProducts()));
   const [selectedId, setSelectedId] = useState(initialFrontendProducts[0]?.id ?? "");
   const [cart, setCart] = useState([]);
+  const [checkoutCart, setCheckoutCart] = useState(null);
   const [serviceCount, setServiceCount] = useState(8659);
   const [socialLinks, setSocialLinks] = useState(() => readSocialLinks());
   const [blogPosts, setBlogPosts] = useState(() => readBlogPosts());
@@ -4855,6 +4914,7 @@ export function App() {
   };
 
   const addToCart = (product, metal, size) => {
+    setCheckoutCart(null);
     setCart((items) => [
       ...items,
       {
@@ -4887,8 +4947,8 @@ export function App() {
       {page === "home" ? <Home setPage={setPage} applyPreset={applyPreset} /> : null}
       {page === "diamonds" ? <FilterPage filters={filters} setFilters={setFilters} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}
       {page === "product" ? <ProductDetail product={selectedProduct} addToCart={addToCart} setPage={setPage} products={diamonds} openProduct={openProduct} /> : null}
-      {page === "cart" ? <Cart cart={cart} setCart={setCart} setPage={setPage} /> : null}
-      {page === "checkout" ? <Checkout cart={cart} onSubmitOrder={submitOrder} openContent={openContent} /> : null}
+      {page === "cart" ? <Cart cart={cart} setCart={setCart} setPage={setPage} setCheckoutCart={setCheckoutCart} /> : null}
+      {page === "checkout" ? <Checkout cart={checkoutCart ?? cart} onSubmitOrder={submitOrder} openContent={openContent} /> : null}
       {page === "account" ? <Account setPage={setPage} /> : null}
       {page === "blog" ? <BlogPage posts={blogPosts} diamonds={diamonds} openProduct={openProduct} blogSlug={blogSlug} setPage={setPage} /> : null}
       {page === "content" ? <ContentPage contentKey={contentKey} setPage={setPage} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}
