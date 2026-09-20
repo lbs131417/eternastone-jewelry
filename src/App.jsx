@@ -492,6 +492,12 @@ const getAvailableMaterialGroups = (product = {}) => {
   const available = groupsFromImages.length ? groupsFromImages : groupsFromProperties;
   return available.length ? available : [materialImageGroups[0]];
 };
+const getProductCreatedTime = (product = {}) => {
+  const value = product.createdAt ?? product.created_at ?? 0;
+  if (typeof value === "number") return value;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
 const getYouTubeEmbedUrl = (url = "") => {
   const value = String(url).trim();
   const match = value.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/);
@@ -1302,21 +1308,16 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
 
 function ProductCard({ product, openProduct, addToCart }) {
   const [materialGroup, setMaterialGroup] = useState(getMaterialImageGroup(product.material));
-  const productCardMaterialGroups = useMemo(() => [
-    materialImageGroups.find((group) => group.key === "yellowGold"),
-    materialImageGroups.find((group) => group.key === "whiteGold"),
-    materialImageGroups.find((group) => group.key === "platinum"),
-    materialImageGroups.find((group) => group.key === "roseGold")
-  ].filter(Boolean), []);
+  const productCardMaterialGroups = useMemo(() => getAvailableMaterialGroups(product), [product]);
   useEffect(() => {
     setMaterialGroup(getMaterialImageGroup(product.material));
   }, [product.id, product.material]);
   const availableGroups = getAvailableMaterialGroups(product);
   useEffect(() => {
     if (!productCardMaterialGroups.some((group) => group.key === materialGroup)) {
-      setMaterialGroup(productCardMaterialGroups[0]?.key ?? "yellowGold");
+      setMaterialGroup(productCardMaterialGroups[0]?.key ?? availableGroups[0]?.key ?? "whiteGold");
     }
-  }, [productCardMaterialGroups, materialGroup]);
+  }, [availableGroups, productCardMaterialGroups, materialGroup]);
   const selectedGroup = productCardMaterialGroups.find((group) => group.key === materialGroup) ?? availableGroups[0] ?? materialImageGroups[0];
   const cardImage = getProductMedia(product, selectedGroup.label).images?.[0] || getPrimaryProductImage(product);
   const fallbackImage = getPrimaryProductImage(product);
@@ -1469,8 +1470,9 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     const mediaQuery = window.matchMedia("(max-width: 760px)");
     const syncMobileSections = () => {
       const shouldOpen = !mediaQuery.matches;
-      setSpecsOpen(shouldOpen);
-      setDescriptionOpen(shouldOpen);
+      const isCurrentCoupleProduct = getProductCategory(product) === "couple";
+      setSpecsOpen(!isCurrentCoupleProduct && shouldOpen);
+      setDescriptionOpen(isCurrentCoupleProduct || shouldOpen);
     };
     syncMobileSections();
     mediaQuery.addEventListener?.("change", syncMobileSections);
@@ -1506,15 +1508,12 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const isCoupleProduct = getProductCategory(product) === "couple";
   const variantGenderValue = (variant = {}) => variant.gender === "male" ? "male" : variant.gender === "pair" ? "pair" : "female";
   const selectedGender = variantGenderValue(selectedVariant);
-  const variantFields = [
-    ...(isCoupleProduct ? [["gender", "Ring", ""]] : []),
-    ...(!isCoupleProduct || !["male", "pair"].includes(selectedGender) ? [["carat", isCoupleProduct ? "Female Total Carat" : "Diamond Carat", "ct"]] : []),
-    ["material", "Metal", ""],
-    ["purity", "Metal Purity", ""]
-  ];
+  const variantFields = isCoupleProduct
+    ? [["material", "Metal", ""], ["purity", "Metal Purity", ""]]
+    : [["carat", "Diamond Carat", "ct"], ["material", "Metal", ""], ["purity", "Metal Purity", ""]];
   const uniqueValues = (items, field) => [...new Set(items.map((variant) => String(variant?.[field] ?? "")).filter(Boolean))];
-  const variantsForGender = isCoupleProduct ? variants.filter((variant) => variantGenderValue(variant) === selectedGender) : variants;
-  const variantsForCarat = ["male", "pair"].includes(selectedGender) ? variantsForGender : variantsForGender.filter((variant) => String(variant.carat) === String(selectedVariant?.carat));
+  const variantsForGender = isCoupleProduct ? variants : variants.filter((variant) => variantGenderValue(variant) === selectedGender);
+  const variantsForCarat = isCoupleProduct || ["male", "pair"].includes(selectedGender) ? variantsForGender : variantsForGender.filter((variant) => String(variant.carat) === String(selectedVariant?.carat));
   const variantsForMaterial = variantsForCarat.filter((variant) => String(variant.material) === String(selectedVariant?.material));
   const variantOptions = {
     gender: uniqueValues(variants, "gender").length ? uniqueValues(variants, "gender") : ["female"],
@@ -1544,13 +1543,14 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     }
 
     if (field === "material") {
-      const materialMatches = variants.filter((variant) => variantGenderValue(variant) === selectedGender && (["male", "pair"].includes(selectedGender) || String(variant.carat) === String(selectedVariant?.carat)) && String(variant.material) === String(value));
+      const materialMatches = variants.filter((variant) => (isCoupleProduct || variantGenderValue(variant) === selectedGender) && (isCoupleProduct || ["male", "pair"].includes(selectedGender) || String(variant.carat) === String(selectedVariant?.carat)) && String(variant.material) === String(value));
       const purityStillAvailable = materialMatches.some((variant) => String(variant.purity) === String(selectedVariant?.purity));
       nextSelection.purity = purityStillAvailable ? selectedVariant?.purity : materialMatches[0]?.purity;
     }
 
+    const matchingFields = isCoupleProduct ? ["material", "purity"] : ["gender", ...(["male", "pair"].includes(nextSelection.gender) ? [] : ["carat"]), "material", "purity"];
     const matchingIndex = variants.findIndex((variant) =>
-      ["gender", ...(["male", "pair"].includes(nextSelection.gender) ? [] : ["carat"]), "material", "purity"].every((variantField) => String(variantField === "gender" ? variantGenderValue(variant) : variant?.[variantField] ?? "") === String(variantField === "gender" ? variantGenderValue(nextSelection) : nextSelection?.[variantField] ?? ""))
+      matchingFields.every((variantField) => String(variantField === "gender" ? variantGenderValue(variant) : variant?.[variantField] ?? "") === String(variantField === "gender" ? variantGenderValue(nextSelection) : nextSelection?.[variantField] ?? ""))
     );
     if (matchingIndex >= 0) setVariantIndex(matchingIndex);
   };
@@ -1627,7 +1627,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
               })}
             </div>
           ) : null}
-          <div className={specsOpen ? "gallery-specs mobile-fold open" : "gallery-specs mobile-fold"}>
+          {!isCoupleProduct ? <div className={specsOpen ? "gallery-specs mobile-fold open" : "gallery-specs mobile-fold"}>
             <button className="fold-trigger" onClick={() => setSpecsOpen((open) => !open)} aria-expanded={specsOpen}>
               <span>Diamond Details</span>
               <ChevronDown size={18} />
@@ -1649,7 +1649,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
                 ))}
               </div>
             ) : null}
-          </div>
+          </div> : null}
           <section className={descriptionOpen ? "product-description mobile-fold open" : "product-description mobile-fold"}>
             <button className="fold-trigger" onClick={() => setDescriptionOpen((open) => !open)} aria-expanded={descriptionOpen}>
               <span>Product Story</span>
@@ -2487,7 +2487,7 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
     .filter((product) => productCategory !== "couple" || isFrontendCoupleProduct(product))
     .filter((product) => !search || `${product.name ?? ""} ${getProductDisplayName(product)} ${product.id}`.toLowerCase().includes(search.toLowerCase()))
     .filter((product) => !shapeFilter || normalizeShapeKey(product.shape) === shapeFilter)
-    .sort((a, b) => sort === "new" ? b.createdAt - a.createdAt : sort === "popular" ? b.sold - a.sold : (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price)) : [];
+    .sort((a, b) => sort === "new" ? getProductCreatedTime(b) - getProductCreatedTime(a) : sort === "popular" ? Number(b.sold ?? 0) - Number(a.sold ?? 0) : (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price)) : [];
   return (
     <main className={`utility-page content-page${contentKey === "story" ? " brand-story-page" : ""}${isLegalPage ? " legal-content-page" : ""}`}>
       <p className="eyebrow">{content.eyebrow}</p>
@@ -2552,6 +2552,7 @@ function ContentPage({ contentKey, setPage, diamonds, openProduct, addToCart }) 
             </div> : null}
             <div className="results-toolbar">
               <span>{needsFilters ? "Filtered Results" : "Product List"} · {contentProducts.length} pieces</span>
+              {isCouplePage ? <label>Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="price">Price: Low to High</option><option value="new">Newest First</option></select></label> : null}
             </div>
             {contentProducts.length ? <div className="product-grid">
               {contentProducts.map((product) => (
