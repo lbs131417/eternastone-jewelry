@@ -254,7 +254,8 @@ function productToRow(product = {}) {
     yellowGold: Array.isArray(materialImages.yellowGold) ? materialImages.yellowGold.filter(Boolean) : []
   };
   const videoUrls = Array.isArray(product.videoUrls) ? product.videoUrls.map((url) => cleanText(url)).filter(Boolean) : [];
-  const hasRichMedia = Object.values(normalizedMaterialImages).some((items) => items.length) || videoUrls.length;
+  const designInspiration = cleanLongText(product.designInspiration, "", 4000);
+  const hasRichMedia = Object.values(normalizedMaterialImages).some((items) => items.length) || videoUrls.length || Boolean(designInspiration);
   const variants = Array.isArray(product.variants)
     ? product.variants.map((variant) => ({
         adminCategory: requestedCategory,
@@ -298,12 +299,12 @@ function productToRow(product = {}) {
     fluorescence: cleanText(product.fluorescence, "None"),
     size_text: cleanText(product.size, "US 5-9 / UK J-R"),
     status: cleanText(product.status, "上架"),
-    description: cleanText(product.description, ""),
+    description: cleanLongText(product.description, ""),
     image_caption: cleanText(product.imageCaption, ""),
     image_alt: cleanText(product.name, `${sku} 商品`),
     image_title: cleanText(product.imageTitle, ""),
     image_url: primaryImage,
-    images: hasRichMedia ? { default: images, ...normalizedMaterialImages, videos: videoUrls } : images,
+    images: hasRichMedia ? { default: images, ...normalizedMaterialImages, videos: videoUrls, designInspiration } : images,
     variants,
     fast: product.fast ?? product.status === "上架",
     real_photo: product.realPhoto ?? images.length > 0,
@@ -340,6 +341,7 @@ function rowToProduct(row = {}) {
     yellowGold: Array.isArray(richMedia.yellowGold) ? richMedia.yellowGold.filter(Boolean) : []
   };
   const videoUrls = Array.isArray(richMedia.videos) ? richMedia.videos.filter(Boolean) : [];
+  const designInspiration = typeof richMedia.designInspiration === "string" ? richMedia.designInspiration : "";
   const variants = Array.isArray(row.variants) ? row.variants : [];
   const variantMetadata = variants.find((variant) => variant && typeof variant === "object" && (variant.adminCategory || variant.displayShape || variant.totalCarat));
   const inferredAdminCategory = inferAdminCategoryFromIdentity({
@@ -380,6 +382,7 @@ function rowToProduct(row = {}) {
     status: row.status,
     description: row.description,
     imageCaption: row.image_caption,
+    designInspiration,
     imageAlt: row.image_alt || row.name,
     imageTitle: row.image_title || "",
     image: fallbackImage,

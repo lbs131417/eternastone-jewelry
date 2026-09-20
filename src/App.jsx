@@ -426,8 +426,8 @@ const isFrontendCoupleProduct = (product = {}) => {
   const adminCategory = getProductAdminCategory(product);
   return adminCategory === "couple_pair" || adminCategory === "couple";
 };
-const usesNoCaratVariantMode = (category = "") => ["couple_pair", "couple_male"].includes(category);
-const defaultVariantGenderForCategory = (category = "") => category === "couple_pair" ? "pair" : category === "couple_male" ? "male" : "female";
+const usesNoCaratVariantMode = (category = "") => ["couple_pair", "couple_male", "designer"].includes(category);
+const defaultVariantGenderForCategory = (category = "") => category === "couple_pair" || category === "designer" ? "pair" : category === "couple_male" ? "male" : "female";
 const getProductVariantCarats = (product = {}) => {
   const variantCarats = (product.variants ?? [])
     .map((variant) => Number(variant.carat))
@@ -1470,9 +1470,10 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     const mediaQuery = window.matchMedia("(max-width: 760px)");
     const syncMobileSections = () => {
       const shouldOpen = !mediaQuery.matches;
-      const isCurrentCoupleProduct = getProductCategory(product) === "couple";
-      setSpecsOpen(!isCurrentCoupleProduct && shouldOpen);
-      setDescriptionOpen(isCurrentCoupleProduct || shouldOpen);
+      const currentCategory = getProductCategory(product);
+      const isSimpleStoryProduct = currentCategory === "couple" || currentCategory === "designer";
+      setSpecsOpen(!isSimpleStoryProduct && shouldOpen);
+      setDescriptionOpen(isSimpleStoryProduct || shouldOpen);
     };
     syncMobileSections();
     mediaQuery.addEventListener?.("change", syncMobileSections);
@@ -1504,16 +1505,18 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     .filter((item) => item.id !== product.id && !["couple", "jewelry", "designer"].includes(getProductCategory(item)))
     .sort((a, b) => Number(b.sold ?? 0) - Number(a.sold ?? 0))
     .slice(0, 4);
-  const showTryOn = !["couple", "jewelry"].includes(getProductCategory(product));
-  const isCoupleProduct = getProductCategory(product) === "couple";
+  const productCategory = getProductCategory(product);
+  const showTryOn = !["couple", "jewelry", "designer"].includes(productCategory);
+  const isCoupleProduct = productCategory === "couple";
+  const isDesignerProduct = productCategory === "designer";
   const variantGenderValue = (variant = {}) => variant.gender === "male" ? "male" : variant.gender === "pair" ? "pair" : "female";
   const selectedGender = variantGenderValue(selectedVariant);
-  const variantFields = isCoupleProduct
+  const variantFields = isCoupleProduct || isDesignerProduct
     ? [["material", "Metal", ""], ["purity", "Metal Purity", ""]]
     : [["carat", "Diamond Carat", "ct"], ["material", "Metal", ""], ["purity", "Metal Purity", ""]];
   const uniqueValues = (items, field) => [...new Set(items.map((variant) => String(variant?.[field] ?? "")).filter(Boolean))];
-  const variantsForGender = isCoupleProduct ? variants : variants.filter((variant) => variantGenderValue(variant) === selectedGender);
-  const variantsForCarat = isCoupleProduct || ["male", "pair"].includes(selectedGender) ? variantsForGender : variantsForGender.filter((variant) => String(variant.carat) === String(selectedVariant?.carat));
+  const variantsForGender = isCoupleProduct || isDesignerProduct ? variants : variants.filter((variant) => variantGenderValue(variant) === selectedGender);
+  const variantsForCarat = isCoupleProduct || isDesignerProduct || ["male", "pair"].includes(selectedGender) ? variantsForGender : variantsForGender.filter((variant) => String(variant.carat) === String(selectedVariant?.carat));
   const variantsForMaterial = variantsForCarat.filter((variant) => String(variant.material) === String(selectedVariant?.material));
   const variantOptions = {
     gender: uniqueValues(variants, "gender").length ? uniqueValues(variants, "gender") : ["female"],
@@ -1543,12 +1546,12 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
     }
 
     if (field === "material") {
-      const materialMatches = variants.filter((variant) => (isCoupleProduct || variantGenderValue(variant) === selectedGender) && (isCoupleProduct || ["male", "pair"].includes(selectedGender) || String(variant.carat) === String(selectedVariant?.carat)) && String(variant.material) === String(value));
+      const materialMatches = variants.filter((variant) => (isCoupleProduct || isDesignerProduct || variantGenderValue(variant) === selectedGender) && (isCoupleProduct || isDesignerProduct || ["male", "pair"].includes(selectedGender) || String(variant.carat) === String(selectedVariant?.carat)) && String(variant.material) === String(value));
       const purityStillAvailable = materialMatches.some((variant) => String(variant.purity) === String(selectedVariant?.purity));
       nextSelection.purity = purityStillAvailable ? selectedVariant?.purity : materialMatches[0]?.purity;
     }
 
-    const matchingFields = isCoupleProduct ? ["material", "purity"] : ["gender", ...(["male", "pair"].includes(nextSelection.gender) ? [] : ["carat"]), "material", "purity"];
+    const matchingFields = isCoupleProduct || isDesignerProduct ? ["material", "purity"] : ["gender", ...(["male", "pair"].includes(nextSelection.gender) ? [] : ["carat"]), "material", "purity"];
     const matchingIndex = variants.findIndex((variant) =>
       matchingFields.every((variantField) => String(variantField === "gender" ? variantGenderValue(variant) : variant?.[variantField] ?? "") === String(variantField === "gender" ? variantGenderValue(nextSelection) : nextSelection?.[variantField] ?? ""))
     );
@@ -1584,9 +1587,18 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
       setFavoriteNotice(error.message || "Unable to save this favorite. Please try again later.");
     }
   };
+  const renderProductStory = (className = "") => (
+    <section className={`${descriptionOpen ? "product-description mobile-fold open" : "product-description mobile-fold"} ${className}`.trim()}>
+      <button className="fold-trigger" onClick={() => setDescriptionOpen((open) => !open)} aria-expanded={descriptionOpen}>
+        <span>Product Story</span>
+        <ChevronDown size={18} />
+      </button>
+      {descriptionOpen ? <div className="product-description-scroll"><p>{productDescription}</p></div> : null}
+    </section>
+  );
 
   return (
-    <main className="detail-page">
+    <main className={isDesignerProduct ? "detail-page designer-detail-page" : "detail-page"}>
       <button className="text-link" onClick={() => setPage("diamonds")}>Back to Engagement Rings</button>
       <section className="detail-layout">
         <div className="gallery">
@@ -1627,7 +1639,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
               })}
             </div>
           ) : null}
-          {!isCoupleProduct ? <div className={specsOpen ? "gallery-specs mobile-fold open" : "gallery-specs mobile-fold"}>
+          {!isCoupleProduct && !isDesignerProduct ? <div className={specsOpen ? "gallery-specs mobile-fold open" : "gallery-specs mobile-fold"}>
             <button className="fold-trigger" onClick={() => setSpecsOpen((open) => !open)} aria-expanded={specsOpen}>
               <span>Diamond Details</span>
               <ChevronDown size={18} />
@@ -1650,13 +1662,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
               </div>
             ) : null}
           </div> : null}
-          <section className={descriptionOpen ? "product-description mobile-fold open" : "product-description mobile-fold"}>
-            <button className="fold-trigger" onClick={() => setDescriptionOpen((open) => !open)} aria-expanded={descriptionOpen}>
-              <span>Product Story</span>
-              <ChevronDown size={18} />
-            </button>
-            {descriptionOpen ? <p>{productDescription}</p> : null}
-          </section>
+          {renderProductStory("product-description-desktop")}
         </div>
         <div className="detail-info">
           <p className="eyebrow">CERTIFIED LAB-GROWN DIAMOND</p>
@@ -1687,6 +1693,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
             <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`)}>Add to Bag</button>
             <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
           </div>
+          {renderProductStory("product-description-mobile")}
           <button className="favorite-btn" onClick={saveFavorite}><Heart size={16} /> Save to Favorites</button>
           {favoriteNotice ? <p className="checkout-notice">{favoriteNotice}</p> : null}
           <div className="delivery-note">
@@ -2266,7 +2273,6 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
   const dedicatedDesignerProducts = diamonds
     .filter((product) => getProductCategory(product) === "designer")
     .sort((a, b) => (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price));
-  const featuredProducts = dedicatedDesignerProducts.slice(0, 5);
   const quickBuy = (product) => {
     const variant = getLowestPricedVariant(product);
     addToCart?.({ ...product, price: variant.price ?? product.price }, `${getMainMaterial(variant.material)} · ${variant.purity}`, "US 6");
@@ -2280,15 +2286,17 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
         <p>This season’s Love of a Lifetime theme uses black-and-gold contrast to amplify each diamond’s brilliant fire, while a touch of red casts the tender romance of a proposal.</p>
       </section>
       <section className="designer-track" aria-label="Designer edition products">
-        {featuredProducts.slice(0, 5).map((product, index) => {
+        {dedicatedDesignerProducts.map((product, index) => {
           return (
             <article className="designer-product-card" key={product.id}>
               <span className="designer-index">0{index + 1}</span>
-              <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} loading="lazy" />
+              <button className="designer-product-image-button" onClick={() => openProduct(product.id)} aria-label={`View ${getProductDisplayName(product)} details`}>
+                <img src={getPrimaryProductImage(product)} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} loading="lazy" />
+              </button>
               <div>
                 <p className="designer-tag">{getProductCaratRangeLabel(product)} · {shapeLabel(product.shape)}</p>
                 <h2>{getProductDisplayName(product)}</h2>
-                <p>Design language: clean shoulders and a high-set center stone, made for polished, memorable proposal moments.</p>
+                {product.designInspiration ? <p>{product.designInspiration}</p> : null}
                 <div className="designer-buy-row">
                   <strong>{getProductFromPriceLabel(product)}</strong>
                   <div className="designer-card-actions">
@@ -3154,6 +3162,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     size: "US 6 / UK L",
     status: "上架",
     description: "以主钻比例、戒托线条与日常佩戴舒适度为核心设计，可按克拉、材质、颜色与净度组合定制。",
+    designInspiration: "",
     imageCaption: "上传图片为 1.50ct 圆形实物图",
     imageAlt: "",
     imageTitle: "",
@@ -3356,6 +3365,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       materialImages: product.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] },
       videoUrls: product.videoUrls ?? [],
       description: product.description,
+      designInspiration: product.designInspiration ?? "",
       imageCaption: product.imageCaption,
       imageAlt: product.name,
       imageTitle: product.imageTitle ?? "",
@@ -3415,6 +3425,11 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     }
     try {
       const savedProduct = await saveStorefrontProduct(payload);
+      const submittedDescriptionLength = String(payload.description || "").length;
+      const returnedDescriptionLength = String(savedProduct?.description || "").length;
+      const backendShortenedDescription = submittedDescriptionLength > 0
+        && returnedDescriptionLength > 0
+        && returnedDescriptionLength < submittedDescriptionLength;
       const nextProduct = {
         ...(savedProduct || {}),
         ...payload,
@@ -3439,6 +3454,9 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       syncProductToFrontend(nextProduct);
       logAction(`${editingProductId ? "编辑" : "新增"}${activeProductCategory.label}商品 ${nextProduct.sku || payload.sku}，已同步 Supabase`);
       closeProductModal();
+      setApiNotice(backendShortenedDescription
+        ? `商品已保存，但后端返回的商品简介只有 ${returnedDescriptionLength}/${submittedDescriptionLength} 个字符。请确认线上后端已部署长文案保存修复。`
+        : `商品已保存：${nextProduct.sku || payload.sku} 已同步 Supabase。`);
     } catch (error) {
       setApiNotice(`商品未保存：Supabase 写入失败。具体错误：${error.message}。请检查 VITE_API_BASE_URL、ADMIN_API_TOKEN、SUPABASE_SERVICE_ROLE_KEY、products 表权限/字段。`);
       logAction(`${editingProductId ? "编辑" : "新增"}${activeProductCategory.label}商品 ${payload.sku} 失败：${error.message}`);
@@ -3844,6 +3862,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         materialImages: product.materialImages ?? { whiteGold: [], roseGold: [], yellowGold: [] },
         videoUrls: product.videoUrls ?? [],
         description: product.description ?? "",
+        designInspiration: product.designInspiration ?? "",
         imageCaption: product.imageCaption ?? "",
         imageAlt: product.name ?? `${shapeLabel(product.shape)}培育钻石商品`,
         imageTitle: product.imageTitle ?? "",
@@ -3994,6 +4013,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                           <span>图片 alt：{getProductImageAlt(viewingProduct)}</span>
                           <span>图片 title：{viewingProduct.imageTitle || "未填写"}</span>
                           <span>图片提示：{viewingProduct.imageCaption}</span>
+                          {viewingProduct.designInspiration ? <span>设计灵感：{viewingProduct.designInspiration}</span> : null}
                           <p>{viewingProduct.description}</p>
                           {(viewingProduct.videoUrls ?? []).length ? <span>商品视频：{viewingProduct.videoUrls.join(" / ")}</span> : null}
                           <div className="variant-list">
@@ -4047,19 +4067,22 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <label><span>商品名称</span><input value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value, imageAlt: event.target.value })} placeholder="例如：椭圆形培育钻石求婚戒指" /></label>
                             <label><span>SKU 编码</span><input value={productDraft.sku} onChange={(event) => setProductDraft({ ...productDraft, sku: event.target.value })} placeholder="例如：EV-RING-001" /></label>
                             <label className="wide"><span>商品简介</span><textarea value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} placeholder="介绍戒指设计、主钻比例、戒托工艺、适合场景等" /></label>
+                            {productTab === "designer" ? <label className="wide"><span>设计灵感</span><textarea value={productDraft.designInspiration ?? ""} onChange={(event) => setProductDraft({ ...productDraft, designInspiration: event.target.value })} placeholder="填写设计师款式列表页展示的设计灵感文案" /></label> : null}
                             <label className="wide"><span>商品图文字提示</span><input value={productDraft.imageCaption} onChange={(event) => setProductDraft({ ...productDraft, imageCaption: event.target.value })} placeholder="例如：上传图片为 2.00ct 椭圆形实物图" /></label>
                             <label className="wide"><span>商品图片 title="" 属性</span><input value={productDraft.imageTitle ?? ""} onChange={(event) => setProductDraft({ ...productDraft, imageTitle: event.target.value })} placeholder="例如：2.00ct Oval Lab-Grown Diamond Engagement Ring" /></label>
                             <label><span>主石 / 宝石属性</span><input value={productDraft.mainStone} onChange={(event) => setProductDraft({ ...productDraft, mainStone: event.target.value })} placeholder="例如：培育钻石" /></label>
-                            <h4>前台筛选属性</h4>
-                            <label><span>钻石形状</span><select value={productDraft.shape} onChange={(event) => setProductDraft({ ...productDraft, shape: event.target.value })}>{shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}</select></label>
-                            {coupleAdminCategories.has(productTab) ? <label><span>总克拉数</span><input type="number" min="0" step="0.01" value={productDraft.totalCarat ?? ""} onChange={(event) => setProductDraft({ ...productDraft, totalCarat: event.target.value })} placeholder="例如：0.50" /></label> : null}
-                            <label><span>颜色等级</span><select value={productDraft.color} onChange={(event) => setProductDraft({ ...productDraft, color: event.target.value })}>{colors.map((item) => <option key={item}>{item}</option>)}</select></label>
-                            <label><span>净度等级</span><select value={productDraft.clarity} onChange={(event) => setProductDraft({ ...productDraft, clarity: event.target.value })}>{clarities.map((item) => <option key={item}>{item}</option>)}</select></label>
-                            <label><span>切工等级</span><select value={productDraft.cut} onChange={(event) => setProductDraft({ ...productDraft, cut: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
-                            <label><span>证书类型</span><select value={productDraft.certificate} onChange={(event) => setProductDraft({ ...productDraft, certificate: event.target.value })}>{certificates.map((item) => <option key={item}>{item}</option>)}</select></label>
-                            <label><span>抛光等级</span><select value={productDraft.polish} onChange={(event) => setProductDraft({ ...productDraft, polish: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
-                            <label><span>对称等级</span><select value={productDraft.symmetry} onChange={(event) => setProductDraft({ ...productDraft, symmetry: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
-                            <label><span>荧光反应</span><select value={productDraft.fluorescence} onChange={(event) => setProductDraft({ ...productDraft, fluorescence: event.target.value })}>{fluorescence.map((item) => <option key={item}>{item}</option>)}</select></label>
+                            {productTab !== "designer" ? <>
+                              <h4>前台筛选属性</h4>
+                              <label><span>钻石形状</span><select value={productDraft.shape} onChange={(event) => setProductDraft({ ...productDraft, shape: event.target.value })}>{shapes.map((shape) => <option value={shape.key} key={shape.key}>{shape.zh}</option>)}</select></label>
+                              {coupleAdminCategories.has(productTab) ? <label><span>总克拉数</span><input type="number" min="0" step="0.01" value={productDraft.totalCarat ?? ""} onChange={(event) => setProductDraft({ ...productDraft, totalCarat: event.target.value })} placeholder="例如：0.50" /></label> : null}
+                              <label><span>颜色等级</span><select value={productDraft.color} onChange={(event) => setProductDraft({ ...productDraft, color: event.target.value })}>{colors.map((item) => <option key={item}>{item}</option>)}</select></label>
+                              <label><span>净度等级</span><select value={productDraft.clarity} onChange={(event) => setProductDraft({ ...productDraft, clarity: event.target.value })}>{clarities.map((item) => <option key={item}>{item}</option>)}</select></label>
+                              <label><span>切工等级</span><select value={productDraft.cut} onChange={(event) => setProductDraft({ ...productDraft, cut: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
+                              <label><span>证书类型</span><select value={productDraft.certificate} onChange={(event) => setProductDraft({ ...productDraft, certificate: event.target.value })}>{certificates.map((item) => <option key={item}>{item}</option>)}</select></label>
+                              <label><span>抛光等级</span><select value={productDraft.polish} onChange={(event) => setProductDraft({ ...productDraft, polish: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
+                              <label><span>对称等级</span><select value={productDraft.symmetry} onChange={(event) => setProductDraft({ ...productDraft, symmetry: event.target.value })}>{grades.map((item) => <option key={item}>{item}</option>)}</select></label>
+                              <label><span>荧光反应</span><select value={productDraft.fluorescence} onChange={(event) => setProductDraft({ ...productDraft, fluorescence: event.target.value })}>{fluorescence.map((item) => <option key={item}>{item}</option>)}</select></label>
+                            </> : null}
                             <h4>销售状态</h4>
                             <label><span>尺码 / 尺寸</span><input value={productDraft.size} onChange={(event) => setProductDraft({ ...productDraft, size: event.target.value })} placeholder="例如：US 6 / UK L" /></label>
                             <label><span>商品状态</span><select value={productDraft.status} onChange={(event) => setProductDraft({ ...productDraft, status: event.target.value })}><option>上架</option><option>下架</option><option>售罄</option></select></label>
@@ -4068,27 +4091,27 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                             <div className="variant-editor-head">
                               <div>
                                 <h4>多规格价格与库存</h4>
-                                <p>只需填写基础商品价格（1ct / 10K White Gold），系统会按克拉、戒托材质和纯度自动计算已选择规格价格。</p>
+                                <p>{productTab === "designer" ? "只需填写基础商品价格，系统会按戒托材质和纯度自动计算已选择规格价格。" : "只需填写基础商品价格（1ct / 10K White Gold），系统会按克拉、戒托材质和纯度自动计算已选择规格价格。"}</p>
                               </div>
                               <div className="variant-editor-actions">
                                 <label><span>基础商品价格 USD</span><input type="number" min="0" step="1" value={productDraft.price} onChange={(event) => updateBaseVariantPrice(event.target.value)} placeholder="例如：2480" /></label>
                                 <label><span>统一库存</span><input value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: event.target.value })} placeholder="例如：8" /></label>
                                 <button className="ghost-btn" onClick={() => applyVariantStockToAll(productDraft.stock || "0")}>应用到全部规格</button>
                                 {!usesNoCaratVariantMode(productTab) ? <button className="ghost-btn" onClick={addVariantCaratGroup}>{productTab === "couple_female" ? "添加女戒克拉组" : "添加克拉组"}</button> : null}
-                                {usesNoCaratVariantMode(productTab) ? <button className="ghost-btn" onClick={addMaleVariantGroup} disabled={(productDraft.variants ?? []).some((variant) => variant.gender === defaultVariantGenderForCategory(productTab))}>{productTab === "couple_pair" ? "添加情侣对戒规格" : "添加男戒规格"}</button> : null}
+                                {usesNoCaratVariantMode(productTab) ? <button className="ghost-btn" onClick={addMaleVariantGroup} disabled={(productDraft.variants ?? []).some((variant) => variant.gender === defaultVariantGenderForCategory(productTab))}>{productTab === "designer" ? "添加设计师款式规格" : productTab === "couple_pair" ? "添加情侣对戒规格" : "添加男戒规格"}</button> : null}
                               </div>
                             </div>
                             {groupedVariants.map((group) => (
                               <section className="variant-carat-group" key={group.carat}>
                                 <div className="variant-carat-head">
                                   {["male", "pair"].includes(group.gender) ? (
-                                    <label><span>规格类型</span><input value={group.gender === "pair" ? "情侣对戒规格（无需克拉数）" : "男戒规格（无需克拉数）"} readOnly /></label>
+                                    <label><span>规格类型</span><input value={productTab === "designer" ? "设计师款式规格（无需主石克拉数）" : group.gender === "pair" ? "情侣对戒规格（无需克拉数）" : "男戒规格（无需克拉数）"} readOnly /></label>
                                   ) : (
                                     <label><span>{productTab === "couple_female" ? "女戒克拉" : "主石克拉"}</span><select value={group.carat} onChange={(event) => updateVariantCaratGroup(group.carat, event.target.value)}>{variantCaratOptions.map((carat) => <option key={carat} value={carat}>{Number(carat).toFixed(0)} ct</option>)}</select></label>
                                   )}
                                   <div>
                                     <button className="ghost-btn" onClick={() => addVariantMetalToCarat(group.carat)} disabled={group.materialGroups.length >= mainMaterials.length}>添加戒托材质</button>
-                                    <button className="ghost-btn" onClick={() => removeVariantCaratGroup(group.carat)} disabled={groupedVariants.length <= 1}>{group.gender === "pair" ? "删除情侣对戒规格" : group.gender === "male" ? "删除男戒规格" : "删除克拉组"}</button>
+                                    <button className="ghost-btn" onClick={() => removeVariantCaratGroup(group.carat)} disabled={groupedVariants.length <= 1}>{productTab === "designer" ? "删除设计师款式规格" : group.gender === "pair" ? "删除情侣对戒规格" : group.gender === "male" ? "删除男戒规格" : "删除克拉组"}</button>
                                   </div>
                                 </div>
                                 {group.materialGroups.map((materialGroup) => (
