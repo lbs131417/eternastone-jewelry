@@ -506,7 +506,16 @@ const getProductCreatedTime = (product = {}) => {
 const getYouTubeEmbedUrl = (url = "") => {
   const value = String(url).trim();
   const match = value.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/);
-  return match ? `https://www.youtube.com/embed/${match[1]}` : "";
+  return match ? `https://www.youtube.com/embed/${match[1]}?rel=0&modestbranding=1&playsinline=1` : "";
+};
+const getYouTubeVideoId = (url = "") => {
+  const value = String(url).trim();
+  const match = value.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/);
+  return match?.[1] ?? "";
+};
+const getYouTubeThumbnailUrl = (url = "") => {
+  const videoId = getYouTubeVideoId(url);
+  return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
 };
 const diamondFaceUpMm = {
   round: [6.5, 6.5],
@@ -1447,10 +1456,12 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const [engravingEnabled, setEngravingEnabled] = useState(false);
   const [engravingFont, setEngravingFont] = useState("Helvetica");
   const [engravingText, setEngravingText] = useState("");
+  const [activeVideoEmbeds, setActiveVideoEmbeds] = useState({});
   const purchaseActionsRef = useRef(null);
   useEffect(() => {
     setVariantIndex(0);
     setActiveImageIndex(0);
+    setActiveVideoEmbeds({});
   }, [product?.id]);
   useEffect(() => {
     setActiveImageIndex(0);
@@ -1670,10 +1681,18 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
             <div className="product-video-list">
               {productMedia.videoUrls.map((url, index) => {
                 const embedUrl = getYouTubeEmbedUrl(url);
-                return embedUrl ? (
-                  <iframe key={`${url}-${index}`} src={embedUrl} title={`Product video ${index + 1}`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
-                ) : (
+                const thumbnailUrl = getYouTubeThumbnailUrl(url);
+                const videoKey = `${url}-${index}`;
+                if (!embedUrl) return (
                   <a key={`${url}-${index}`} href={url} target="_blank" rel="noreferrer">View Product Video {index + 1}</a>
+                );
+                return activeVideoEmbeds[videoKey] ? (
+                  <iframe className="product-video-frame" key={videoKey} src={`${embedUrl}&autoplay=1`} title={`Product video ${index + 1}`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
+                ) : (
+                  <button className="product-video-cover" key={videoKey} type="button" onClick={() => setActiveVideoEmbeds((items) => ({ ...items, [videoKey]: true }))} aria-label={`Play product video ${index + 1}`}>
+                    {thumbnailUrl ? <img src={thumbnailUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.src = `https://img.youtube.com/vi/${getYouTubeVideoId(url)}/mqdefault.jpg`; }} /> : null}
+                    <span className="video-play-badge"><Youtube size={28} aria-hidden="true" /> Play</span>
+                  </button>
                 );
               })}
             </div>
