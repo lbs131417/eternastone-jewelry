@@ -2979,6 +2979,192 @@ label {
   gap: 12px;
 }
 
+.summary-option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 1em 0;
+  color: var(--ink);
+}
+
+.summary-option-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-option-row input {
+  accent-color: #171512;
+}
+
+.switch-toggle {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  padding: 0;
+  border: 1px solid rgba(124, 107, 82, 0.28);
+  border-radius: 999px;
+  background: rgba(124, 107, 82, 0.14);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.switch-toggle i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.switch-toggle.on {
+  border-color: rgba(199, 161, 96, 0.74);
+  background: #c7a160;
+}
+
+.switch-toggle.on i {
+  transform: translateX(17px);
+}
+
+.engraving-option {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(199, 173, 120, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 250, 240, 0.54);
+}
+
+.engraving-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.engraving-toggle input {
+  accent-color: #171512;
+}
+
+.engraving-fields {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.engraving-fields label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.engraving-fields select,
+.engraving-fields input {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.engraving-fields small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.first-offer-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(20, 16, 10, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.first-offer-popup {
+  position: relative;
+  width: min(430px, 100%);
+  padding: 28px;
+  border: 1px solid rgba(212, 184, 134, 0.38);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(212, 184, 134, 0.22), transparent 11rem),
+    #fffaf0;
+  box-shadow: 0 28px 90px rgba(20, 16, 10, 0.26);
+}
+
+.first-offer-popup .modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(199, 161, 96, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #6f5730;
+  box-shadow: 0 8px 20px rgba(20, 16, 10, 0.12);
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.first-offer-popup .modal-close:hover {
+  transform: translateY(-1px);
+  border-color: rgba(199, 161, 96, 0.7);
+  background: #171512;
+  color: #f7e1ac;
+}
+
+.first-offer-popup .modal-close svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.4;
+}
+
+.first-offer-popup h2 {
+  margin: 8px 0 10px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.05;
+}
+
+.first-offer-popup p {
+  color: #6f6559;
+  line-height: 1.6;
+}
+
+.first-offer-popup input {
+  width: 100%;
+  min-height: 46px;
+  margin: 14px 0;
+  padding: 0 14px;
+  border: 1px solid rgba(199, 173, 120, 0.42);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.first-offer-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
 .summary-total {
   padding-top: 14px;
   border-top: 1px solid var(--line);
@@ -13303,6 +13489,23 @@ main > .faq-page .faq-list details p {
     letter-spacing: 0.1em !important;
   }
 
+  .engraving-option {
+    margin: 8px 0 !important;
+    padding: 9px !important;
+    gap: 8px !important;
+  }
+
+  .engraving-fields {
+    grid-template-columns: 1fr !important;
+    gap: 7px !important;
+  }
+
+  .engraving-fields select,
+  .engraving-fields input {
+    min-height: 36px !important;
+    font-size: 12px !important;
+  }
+
   .product-description-desktop {
     display: none !important;
   }
@@ -13377,11 +13580,21 @@ main > .faq-page .faq-list details p {
 
   .detail-page .thumb-carousel {
     display: grid !important;
-    grid-template-columns: 28px minmax(0, 1fr) 28px !important;
+    grid-template-columns: 28px minmax(0, auto) 28px !important;
     gap: 6px !important;
     align-items: center !important;
+    justify-content: center !important;
     justify-items: center !important;
     margin-top: 6px !important;
+  }
+
+  .detail-page .image-caption {
+    width: 100% !important;
+    margin: 7px auto 5px !important;
+    overflow-wrap: anywhere !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+    text-align: center !important;
   }
 
   .detail-page .thumb-row {
@@ -13393,7 +13606,7 @@ main > .faq-page .faq-list details p {
     overflow-y: hidden !important;
     flex-wrap: nowrap !important;
     justify-content: center !important;
-    width: max-content !important;
+    width: auto !important;
     max-width: 100% !important;
     scrollbar-width: none !important;
   }
@@ -13403,15 +13616,15 @@ main > .faq-page .faq-list details p {
   }
 
   .detail-page .thumb-row button {
-    flex: 0 0 64px !important;
-    width: 64px !important;
+    flex: 0 0 clamp(54px, 16vw, 64px) !important;
+    width: clamp(54px, 16vw, 64px) !important;
     border-radius: 6px !important;
   }
 
   .detail-page .thumb-row button img,
   .detail-page .thumb-row img {
     aspect-ratio: 1.18 !important;
-    height: 54px !important;
+    height: clamp(46px, 14vw, 54px) !important;
     border-radius: 6px !important;
   }
 
@@ -13420,5 +13633,13 @@ main > .faq-page .faq-list details p {
     min-height: 48px !important;
     border-radius: 8px !important;
     font-size: 18px !important;
+  }
+
+  .first-offer-popup {
+    padding: 22px 18px !important;
+  }
+
+  .first-offer-actions {
+    grid-template-columns: 1fr !important;
   }
 }

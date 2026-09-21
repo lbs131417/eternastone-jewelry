@@ -45,6 +45,9 @@ import everastoneLogoMark from "./assets/everastone-logo-mark.png";
 
 const money = (value) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+const preciseMoney = (value) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+const getLogisticsInsuranceFee = (amount) => Math.round(Math.max(0, Number(amount) || 0) * 0.02 * 100) / 100;
 const formatArrivalDate = (days = 23) => {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -295,7 +298,8 @@ const materialImageGroups = [
 const mainMaterials = ["White Gold", "Platinum", "Yellow Gold", "Rose Gold"];
 const goldPurities = ["10K", "14K", "18K"];
 const platinumPurities = ["Pure Platinum"];
-const variantCaratOptions = ["1.00", "2.00", "3.00", "4.00", "5.00"];
+const variantCaratOptions = ["0.50", "1.00", "2.00", "3.00", "4.00", "5.00"];
+const formatVariantCaratLabel = (carat) => `${Number(carat).toFixed(Number(carat) % 1 === 0 ? 0 : 1)} ct`;
 const getPurityOptionsForMaterial = (material = "") => getMainMaterial(material) === "Platinum" ? platinumPurities : goldPurities;
 const getMaterialImageGroup = (material = "") => {
   const normalized = String(material).toLowerCase();
@@ -333,7 +337,7 @@ const getVariantPriceFromBase = (basePrice = 0, variant = {}) => {
   const carat = isNoCaratVariant ? 1 : Number(variant.carat) || 1;
   const material = getMainMaterial(variant.material);
   const purity = getMaterialPurity(material, variant.purity);
-  const caratAdjustment = Math.max(0, carat - 1) * 530;
+  const caratAdjustment = (carat - 1) * 530;
   const purityAdjustment = material === "Platinum"
     ? 610
     : purity === "18K"
@@ -1435,6 +1439,9 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const [specsOpen, setSpecsOpen] = useState(true);
   const [descriptionOpen, setDescriptionOpen] = useState(true);
   const [favoriteNotice, setFavoriteNotice] = useState("");
+  const [engravingEnabled, setEngravingEnabled] = useState(false);
+  const [engravingFont, setEngravingFont] = useState("Helvetica");
+  const [engravingText, setEngravingText] = useState("");
   const purchaseActionsRef = useRef(null);
   useEffect(() => {
     setVariantIndex(0);
@@ -1494,8 +1501,16 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const displayPrice = Number(selectedVariant?.price) || product.price;
   const firstOrderPrice = Math.round(displayPrice * 0.9);
   const selectedMetalText = selectedVariant?.material === "Platinum" ? "Pure Platinum" : `${selectedVariant?.purity ?? "18K"} ${selectedVariant?.material ?? "White Gold"}`;
+  const engravingSummary = engravingEnabled && engravingText.trim()
+    ? ` · Free engraving: "${engravingText.trim()}" (${engravingFont})`
+    : engravingEnabled
+      ? ` · Free engraving selected (${engravingFont})`
+      : "";
+  const selectedCartSpecs = `${selectedMetalText}${engravingSummary}`;
   const estimatedArrival = formatArrivalDate(23);
-  const imageCaption = product.imageCaption || `${Number(product.carat || previewCarat).toFixed(2)}ct ${shapeLabel(product.shape)} product image`;
+  const imageCaption = product.imageCaption || (getProductCategory(product) === "couple"
+    ? `${getProductCaratRangeLabel(product)} matching wedding bands product image`
+    : `${Number(product.carat || previewCarat).toFixed(2)}ct ${shapeLabel(product.shape)} product image`);
   const productDescription = product.description || `This ${shapeLabel(product.shape)} lab-grown diamond ring is designed around everyday comfort, balanced proportions and visible brilliance. Choose the carat, metal and size combination that best fits your proposal, anniversary or lifelong promise.`;
   const sizeChart = usSizes.map((usSize, index) => ({
     us: usSize,
@@ -1707,10 +1722,20 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
             <label>Size Standard<select value={sizeType} onChange={(event) => { setSizeType(event.target.value); setSize(event.target.value === "US" ? usSizes[4] : ukSizes[4]); }}><option>US</option><option>UK</option></select></label>
             <label>Ring Size<select value={size} onChange={(event) => setSize(event.target.value)}>{sizes.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
+          <div className="engraving-option">
+            <label className="engraving-toggle"><input type="checkbox" checked={engravingEnabled} onChange={(event) => setEngravingEnabled(event.target.checked)} /> Free engraving</label>
+            {engravingEnabled ? (
+              <div className="engraving-fields">
+                <label>Font<select value={engravingFont} onChange={(event) => setEngravingFont(event.target.value)}><option>Helvetica</option><option>Garamond</option></select></label>
+                <label>Engraving<input value={engravingText} maxLength={20} onChange={(event) => setEngravingText(event.target.value.slice(0, 20))} placeholder="Up to 20 characters" /></label>
+                <small>{engravingText.length}/20 characters</small>
+              </div>
+            ) : null}
+          </div>
           <button className="size-chart-trigger" onClick={() => setSizeChartOpen(true)}>View International Ring Size Chart</button>
           <div className="detail-actions purchase-actions" ref={purchaseActionsRef}>
-            <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`)}>Add to Bag</button>
-            <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
+            <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`)}>Add to Bag</button>
+            <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
           </div>
           {renderProductStory("product-description-mobile")}
           <button className="favorite-btn" onClick={saveFavorite}><Heart size={16} /> Save to Favorites</button>
@@ -1754,8 +1779,8 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
       {stickyActionsVisible ? (
         <div className="sticky-purchase-bar visible">
           <span>After offer {money(firstOrderPrice)}</span>
-          <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`)}>Add to Bag</button>
-          <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedMetalText, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
+          <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`)}>Add to Bag</button>
+          <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
         </div>
       ) : null}
       {sizeChartOpen ? (
@@ -1824,8 +1849,8 @@ function Cart({ cart, setCart, setPage, setCheckoutCart }) {
   const allSelected = cart.length > 0 && selectedCartIds.size === cart.length;
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = subtotal * 0.1;
-  const tax = subtotal * 0.075;
-  const shipping = subtotal > 0 ? 95 : 0;
+  const tax = 0;
+  const shipping = 0;
   const total = subtotal - discount + tax + shipping;
 
   const updateQty = (id, qty) => setCart((items) => items.map((item) => item.cartId === id ? { ...item, qty: Math.max(1, qty) } : item));
@@ -1885,8 +1910,6 @@ function Cart({ cart, setCart, setPage, setCheckoutCart }) {
           <h2>Order Summary</h2>
           <p><span>Subtotal</span><strong>{money(subtotal)}</strong></p>
           <p><span>First order 10% off</span><strong>-{money(discount)}</strong></p>
-          <p><span>Estimated tax</span><strong>{money(tax)}</strong></p>
-          <p><span>Insured shipping</span><strong>{money(shipping)}</strong></p>
           <p className="summary-total"><span>Total</span><strong>{money(total)}</strong></p>
           <button className="primary-btn full" disabled={!selectedItems.length} onClick={checkoutSelected}>Checkout</button>
         </aside>
@@ -1926,10 +1949,12 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
     phone: ""
   });
   const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [insuranceSelected, setInsuranceSelected] = useState(false);
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = Math.round(subtotal * 0.1 * 100) / 100;
-  const tax = Math.round(subtotal * 0.075 * 100) / 100;
-  const shipping = subtotal > 0 ? 95 : 0;
+  const tax = 0;
+  const insuranceFee = getLogisticsInsuranceFee(subtotal);
+  const shipping = subtotal > 0 && insuranceSelected ? insuranceFee : 0;
   const total = Math.max(0, subtotal - discount + tax + shipping);
   useEffect(() => {
     if (cart.length) {
@@ -1981,7 +2006,12 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
     discount,
     tax,
     shipping,
-    total
+    total,
+    metadata: {
+      logisticsInsurance: insuranceSelected,
+      logisticsInsuranceFee: shipping,
+      taxCoveredByPlatform: true
+    }
   });
   const submitOrder = async () => {
     const validation = validateCheckout();
@@ -2097,7 +2127,7 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
       cancelled = true;
       if (paypalButtonsRef.current) paypalButtonsRef.current.innerHTML = "";
     };
-  }, [cart, form, policyAccepted, subtotal, discount, tax, shipping, total]);
+  }, [cart, form, policyAccepted, insuranceSelected, subtotal, discount, tax, shipping, total]);
 
   return (
     <main className="utility-page">
@@ -2127,8 +2157,10 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
           <div className="summary-panel checkout-summary">
             <p><span>Subtotal</span><strong>{money(subtotal)}</strong></p>
             <p><span>First order 10% off</span><strong>-{money(discount)}</strong></p>
-            <p><span>Estimated tax</span><strong>{money(tax)}</strong></p>
-            <p><span>Insured shipping</span><strong>{money(shipping)}</strong></p>
+            <label className="summary-option-row">
+              <span><button type="button" className={insuranceSelected ? "switch-toggle on" : "switch-toggle"} onClick={() => setInsuranceSelected((value) => !value)} aria-pressed={insuranceSelected}><i /></button> Logistics insurance</span>
+              <strong>{preciseMoney(insuranceFee)}</strong>
+            </label>
             <p className="summary-total"><span>Total</span><strong>{money(total)}</strong></p>
           </div>
           <div className="check-row checkout-policy-consent">
@@ -4165,7 +4197,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                                   {["male", "pair"].includes(group.gender) ? (
                                     <label><span>规格类型</span><input value={productTab === "designer" ? "设计师款式规格（无需主石克拉数）" : group.gender === "pair" ? "情侣对戒规格（无需克拉数）" : "男戒规格（无需克拉数）"} readOnly /></label>
                                   ) : (
-                                    <label><span>{productTab === "couple_female" ? "女戒克拉" : "主石克拉"}</span><select value={group.carat} onChange={(event) => updateVariantCaratGroup(group.carat, event.target.value)}>{variantCaratOptions.map((carat) => <option key={carat} value={carat}>{Number(carat).toFixed(0)} ct</option>)}</select></label>
+                                    <label><span>{productTab === "couple_female" ? "女戒克拉" : "主石克拉"}</span><select value={group.carat} onChange={(event) => updateVariantCaratGroup(group.carat, event.target.value)}>{variantCaratOptions.map((carat) => <option key={carat} value={carat}>{formatVariantCaratLabel(carat)}</option>)}</select></label>
                                   )}
                                   <div>
                                     <button className="ghost-btn" onClick={() => addVariantMetalToCarat(group.carat)} disabled={group.materialGroups.length >= mainMaterials.length}>添加戒托材质</button>
@@ -4660,6 +4692,55 @@ function SupportChatWidget() {
   );
 }
 
+function FirstOrderOfferPopup() {
+  const [visible, setVisible] = useState(false);
+  const [email, setEmail] = useState("");
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (window.localStorage.getItem("everastone.firstOfferPopupClosed") === "true") return undefined;
+    const timer = window.setTimeout(() => setVisible(true), 10000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const close = () => {
+    window.localStorage.setItem("everastone.firstOfferPopupClosed", "true");
+    setVisible(false);
+  };
+  const unlock = () => {
+    if (email && email.includes("@")) {
+      window.localStorage.setItem("everastone.firstOfferEmail", email);
+    }
+    setDone(true);
+    window.localStorage.setItem("everastone.firstOfferPopupClosed", "true");
+  };
+  if (!visible) return null;
+  return (
+    <div className="first-offer-popup-backdrop" role="presentation">
+      <section className="first-offer-popup" role="dialog" aria-modal="true" aria-label="Unlock first order offer">
+        <button className="modal-close" onClick={close} aria-label="Close"><X size={18} /></button>
+        {done ? (
+          <>
+            <span className="eyebrow">OFFER UNLOCKED</span>
+            <h2>Your 10% first-order offer is ready.</h2>
+            <p>Apply it at checkout and continue exploring Everastone pieces.</p>
+            <button className="primary-btn full" onClick={() => setVisible(false)}>Continue Shopping</button>
+          </>
+        ) : (
+          <>
+            <span className="eyebrow">FIRST ORDER OFFER</span>
+            <h2>Unlock 10% off your first order</h2>
+            <p>Leave your email to save your first-order offer and receive order support reminders.</p>
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
+            <div className="first-offer-actions">
+              <button className="primary-btn" onClick={unlock}>Unlock My Offer</button>
+              <button className="secondary-btn" onClick={close}>No thanks</button>
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
 const initialFilters = {
   shape: "",
   caratMin: 0,
@@ -4955,6 +5036,7 @@ export function App() {
       {page === "admin" ? <Admin diamonds={diamonds} setDiamonds={setDiamonds} socialLinks={socialLinks} setSocialLinks={setSocialLinks} blogPosts={blogPosts} setBlogPosts={setBlogPosts} /> : null}
       {page !== "admin" ? <Footer openContent={openContent} setPage={setPage} socialLinks={socialLinks} /> : null}
       {page !== "admin" ? <SupportChatWidget /> : null}
+      {page !== "admin" ? <FirstOrderOfferPopup /> : null}
     </>
   );
 }
