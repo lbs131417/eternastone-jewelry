@@ -1153,6 +1153,26 @@ function Home({ setPage, applyPreset }) {
 function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const defaultCatalogFilters = {
+    shape: "",
+    caratMin: 0,
+    caratMax: 5,
+    priceMin: 0,
+    priceMax: 50000,
+    color: "",
+    clarity: "",
+    cut: "",
+    certificate: "",
+    polish: "",
+    symmetry: "",
+    depth: "",
+    table: "",
+    ratio: "",
+    fluorescence: "",
+    realPhoto: false,
+    fast: false,
+    sort: "price-asc"
+  };
 
   const filtered = useMemo(() => {
     const sorted = diamonds
@@ -1183,27 +1203,11 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
   }, [diamonds, filters]);
 
   const setValue = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
-  const resetFilters = () =>
-    setFilters({
-      shape: "",
-      caratMin: 0,
-      caratMax: 5,
-      priceMin: 0,
-      priceMax: 50000,
-      color: "",
-      clarity: "",
-      cut: "",
-      certificate: "",
-      polish: "",
-      symmetry: "",
-      depth: "",
-      table: "",
-      ratio: "",
-      fluorescence: "",
-      realPhoto: false,
-      fast: false,
-      sort: "price-asc"
-    });
+  const resetFilters = () => setFilters(defaultCatalogFilters);
+  const setMobileShapeFilter = (shape = "") => {
+    setMobileFiltersOpen(false);
+    setFilters({ ...defaultCatalogFilters, shape });
+  };
 
   return (
     <main className="catalog-page">
@@ -1219,11 +1223,12 @@ function FilterPage({ filters, setFilters, diamonds, openProduct, addToCart }) {
       </button>
 
       <section className="mobile-catalog-tabs" aria-label="Mobile catalog shortcuts">
-        <button className={!filters.shape ? "active" : ""} onClick={() => setValue("shape", "")}>All</button>
-        <button onClick={() => setValue("sort", "new")}>New</button>
-        <button onClick={() => setValue("sort", "price-asc")}>Low Price</button>
-        <button onClick={() => setValue("sort", filters.sort === "price-asc" ? "price-desc" : "price-asc")}>Price</button>
-        <button onClick={() => setMobileFiltersOpen((open) => !open)}>Filter</button>
+        <button className={!filters.shape ? "active" : ""} onClick={() => setMobileShapeFilter("")}>All</button>
+        {catalogShapes.map((shape) => (
+          <button key={shape.key} className={filters.shape === shape.key ? "active" : ""} onClick={() => setMobileShapeFilter(shape.key)}>
+            {shape.label}
+          </button>
+        ))}
       </section>
 
       <section className={mobileFiltersOpen ? "shape-bar mobile-open" : "shape-bar"} aria-label="Diamond shape filter">
@@ -1646,7 +1651,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
             <img src={activeImage} alt={getProductImageAlt(product)} title={getProductImageTitle(product)} />
             <button className="gallery-nav next" onClick={(event) => { event.stopPropagation(); changeImage(1); }} aria-label="Next product image">›</button>
           </div>
-          <p className="image-caption">{imageCaption}</p>
+          {isCoupleProduct ? null : <p className="image-caption">{imageCaption}</p>}
           <div className="thumb-carousel">
             {productImages.length > 4 ? <button className="thumb-page-btn" onClick={() => setThumbStart((start) => Math.max(0, start - 1))} disabled={thumbStart === 0} aria-label="Previous thumbnails">‹</button> : null}
             <div className="thumb-row">

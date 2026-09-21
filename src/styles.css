@@ -6453,7 +6453,11 @@ textarea {
 }
 
 .thumb-row button {
+  position: relative;
+  display: block;
   overflow: hidden;
+  width: 76px;
+  height: 76px;
   padding: 0;
   border: 1px solid rgba(199, 173, 120, 0.22);
   border-radius: 6px;
@@ -6468,8 +6472,10 @@ textarea {
 .thumb-row button img {
   display: block;
   width: 100%;
-  aspect-ratio: 1.3;
-  object-fit: cover;
+  height: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #fff;
   transition: transform 0.3s ease;
 }
 
@@ -10107,11 +10113,7 @@ textarea {
   }
 
   .catalog-mobile-filter-toggle {
-    width: calc(100% - 28px) !important;
-    min-height: 48px !important;
-    margin: 0 auto 14px !important;
-    border-radius: 14px !important;
-    font-size: 14px !important;
+    display: none !important;
   }
 
   .mobile-catalog-tabs {
@@ -10137,8 +10139,9 @@ textarea {
 
   .mobile-catalog-tabs button {
     flex: 1 0 auto !important;
-    min-width: 52px !important;
+    min-width: 74px !important;
     min-height: 34px !important;
+    padding: 0 14px !important;
     border: 0 !important;
     border-radius: 999px !important;
     background: transparent !important;
@@ -10207,11 +10210,7 @@ textarea {
   }
 
   .results-toolbar label {
-    display: grid !important;
-    gap: 5px !important;
-    width: 100% !important;
-    font-size: 12px !important;
-    color: #6d6257 !important;
+    display: none !important;
   }
 
   .results-toolbar select {
@@ -13579,8 +13578,8 @@ main > .faq-page .faq-list details p {
   }
 
   .detail-page .thumb-carousel {
-    display: grid !important;
-    grid-template-columns: 28px minmax(0, auto) 28px !important;
+    display: flex !important;
+    grid-template-columns: none !important;
     gap: 6px !important;
     align-items: center !important;
     justify-content: center !important;
@@ -13618,13 +13617,22 @@ main > .faq-page .faq-list details p {
   .detail-page .thumb-row button {
     flex: 0 0 clamp(54px, 16vw, 64px) !important;
     width: clamp(54px, 16vw, 64px) !important;
+    height: clamp(54px, 16vw, 64px) !important;
+    min-height: clamp(54px, 16vw, 64px) !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+    display: block !important;
     border-radius: 6px !important;
   }
 
   .detail-page .thumb-row button img,
   .detail-page .thumb-row img {
-    aspect-ratio: 1.18 !important;
-    height: clamp(46px, 14vw, 54px) !important;
+    aspect-ratio: 1 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    display: block !important;
+    background: #fff !important;
     border-radius: 6px !important;
   }
 
