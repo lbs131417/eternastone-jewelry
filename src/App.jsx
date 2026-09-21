@@ -41,7 +41,7 @@ import {
   ukSizes,
   usSizes
 } from "./data.js";
-import everastoneLogoMark from "./assets/everastone-logo-mark.png";
+import everastoneLogoMark from "./assets/everastone-logo-mark-small.png";
 
 const money = (value) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
@@ -532,8 +532,8 @@ const getTryOnDiamondSize = (shape, carat) => {
     height: Math.round(heightMm * scale * pxPerMm)
   };
 };
-const heroRingImage = new URL("./assets/everastone-hero-ring.png", import.meta.url).href;
-const warmGoldHero = new URL("./assets/everastone-hero-warm-gold.png", import.meta.url).href;
+const heroRingImage = new URL("./assets/everastone-hero-ring-optimized.jpg", import.meta.url).href;
+const warmGoldHero = new URL("./assets/everastone-hero-warm-gold-optimized.jpg", import.meta.url).href;
 const whatsappDesignerQr = new URL("./assets/whatsapp-designer-qr.png", import.meta.url).href;
 const pageToPath = {
   home: "/",
@@ -846,7 +846,7 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
           <Menu size={22} />
         </button>
         <button className="brand" onClick={() => setPage("home")} aria-label="everastone Jewelry home">
-          <span className="brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" /></span>
+          <span className="brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" width="192" height="192" decoding="async" /></span>
           <span>
             <strong>EVERASTONE</strong>
             <small>Lab-grown diamond atelier</small>
@@ -904,7 +904,7 @@ function Header({ page, contentKey, setPage, setFilters, openContent, cartCount,
           <button className="mobile-drawer-scrim" aria-label="Close mobile menu" onClick={() => setMobileMenuOpen(false)} />
           <aside className="mobile-drawer" role="dialog" aria-modal="true" aria-label="Mobile navigation menu">
             <div className="mobile-drawer-brand">
-              <span className="brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" /></span>
+              <span className="brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" width="192" height="192" decoding="async" /></span>
           <span><strong>EVERASTONE</strong><small>Lab-grown diamond atelier</small></span>
               <button onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
             </div>
@@ -1022,7 +1022,7 @@ function Home({ setPage, applyPreset }) {
           <span className="motion-ring-glow" />
         </div>
         <div className="hero-product-wrap" aria-hidden="true">
-          <img className="hero-product" src={heroRingImage} alt="" />
+          <img className="hero-product" src={heroRingImage} alt="" width="1280" height="720" decoding="async" fetchPriority="high" />
           <span className="hero-product-shine" />
         </div>
         <div className="hero-copy">
@@ -4559,7 +4559,7 @@ function Footer({ openContent, setPage, socialLinks }) {
     <footer className="site-footer">
       <div className="footer-brand-block">
         <div className="footer-brand-row">
-          <span className="brand-mark footer-brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" /></span>
+          <span className="brand-mark footer-brand-mark"><img src={everastoneLogoMark} alt="" aria-hidden="true" width="192" height="192" decoding="async" loading="lazy" /></span>
           <strong>EVERASTONE</strong>
         </div>
         <p>{homeCopy.footer.brandText.en}</p>
@@ -5045,4 +5045,5 @@ export function App() {
     </>
   );
 }
+
 
