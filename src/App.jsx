@@ -2047,6 +2047,12 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
     setNotice("Saving your unpaid order...");
     try {
       const order = await createStorefrontOrder(buildCheckoutPayload());
+      trackAnalyticsEvent({
+        eventType: "order_submit",
+        pagePath: window.location.pathname,
+        sessionId: getAnalyticsSessionId(),
+        metadata: { orderId: order.orderNumber || order.id, total }
+      }).catch(() => {});
       upsertCustomerProfile({
         email: form.email,
         user: {
@@ -2118,6 +2124,12 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
             }).catch(() => {});
             const result = await createPayPalOrder(buildCheckoutPayload());
             localOrderRef.current = result.order;
+            trackAnalyticsEvent({
+              eventType: "order_submit",
+              pagePath: window.location.pathname,
+              sessionId: getAnalyticsSessionId(),
+              metadata: { orderId: result.order?.orderNumber || result.order?.id, total, paymentProvider: "PayPal" }
+            }).catch(() => {});
             return result.paypalOrderId;
           },
           onApprove: async (data) => {
@@ -3174,6 +3186,25 @@ const formatOrderAddress = (address = {}) => [
   address.country
 ].filter(Boolean).join(", ");
 
+const formatDateInputValue = (date) => {
+  const value = new Date(date);
+  if (Number.isNaN(value.getTime())) return "";
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getRecentDateRange = (days = 1) => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - Math.max(1, Number(days) || 1) + 1);
+  return {
+    startDate: formatDateInputValue(start),
+    endDate: formatDateInputValue(end)
+  };
+};
+
 const mapApiOrderToAdminOrder = (order = {}) => {
   const items = Array.isArray(order.items) ? order.items : [];
   const firstItem = items[0] ?? {};
@@ -3231,8 +3262,10 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     status: "published",
     updatedAt: new Date().toISOString().slice(0, 10)
   }));
-  const [selectedOrderId, setSelectedOrderId] = useState("HS20260913001");
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
+  const [trafficRangeMode, setTrafficRangeMode] = useState("today");
+  const [trafficRange, setTrafficRange] = useState(() => getRecentDateRange(1));
   const [draft, setDraft] = useState({
     sku: "LD-CUSTOM-001",
     name: "2ct Oval Lab Grown Diamond",
@@ -3327,61 +3360,43 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
     ["对称", grades],
     ["荧光反应", fluorescence]
   ];
-  const [orders, setOrders] = useState([
-    {
-      id: "HS20260913001",
-      userId: "U-1028",
-      email: "olivia@example.com",
-      amount: 4860,
-      paid: "已付款",
-      status: "已付款待确认",
-      country: "United States",
-      type: "钻戒成品",
-      payment: "PayPal",
-      transaction: "PP-83Y2-9182",
-      address: "48 Madison Ave, New York, NY 10010, United States",
-      items: "2.18ct 椭圆形 E/VS1 IGI + 18K White Gold Halo Setting",
-      logistics: "FedEx 待发货",
-      note: "客户希望加急，戒圈 US 6.5，内侧刻字 Always.",
-      refund: "无"
-    },
-    {
-      id: "HS20260912008",
-      userId: "U-0981",
-      email: "emma@example.co.uk",
-      amount: 2980,
-      paid: "已付款",
-      status: "定制生产中",
-      country: "United Kingdom",
-      type: "裸钻",
-      payment: "Stripe",
-      transaction: "ST-UK-77219",
-      address: "12 King Street, London W1, United Kingdom",
-      items: "1.74ct 圆形 D/VVS2 GIA 裸钻",
-      logistics: "待生产完成",
-      note: "生产备注：证书随包裹寄出。",
-      refund: "无"
-    },
-    {
-      id: "HS20260911003",
-      userId: "U-0872",
-      email: "mia@example.com",
-      amount: 1260,
-      paid: "已付款",
-      status: "已发货",
-      country: "United States",
-      type: "首饰",
-      payment: "PayPal",
-      transaction: "PP-73A1-4490",
-      address: "22 Sunset Blvd, Los Angeles, CA 90028, United States",
-      items: "Lab Diamond Tennis Bracelet",
-      logistics: "DHL 92838102",
-      note: "无特殊备注。",
-      refund: "售后窗口开启"
-    }
-  ]);
+  const [orders, setOrders] = useState([]);
   const [analyticsSummary, setAnalyticsSummary] = useState(null);
-  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0];
+  const emptyOrder = {
+    id: "",
+    userId: "",
+    email: "",
+    amount: 0,
+    paid: "",
+    status: "",
+    country: "",
+    type: "",
+    payment: "",
+    transaction: "",
+    address: "",
+    items: "",
+    logistics: "暂无订单",
+    note: "",
+    refund: ""
+  };
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0] ?? emptyOrder;
+  const traffic = analyticsSummary?.traffic ?? {};
+  const trafficFunnel = traffic.funnel ?? [
+    { key: "visit", label: "访客访问", count: 0, totalRate: 0, previousRate: 1 },
+    { key: "product_view", label: "浏览商品", count: 0, totalRate: 0, previousRate: 0 },
+    { key: "add_to_cart", label: "加入购物车", count: 0, totalRate: 0, previousRate: 0 },
+    { key: "checkout_start", label: "开始结算", count: 0, totalRate: 0, previousRate: 0 },
+    { key: "order_submit", label: "提交订单", count: 0, totalRate: 0, previousRate: 0 },
+    { key: "paypal_paid", label: "成功付款", count: 0, totalRate: 0, previousRate: 0 }
+  ];
+  const formatRate = (value = 0) => `${(Number(value || 0) * 100).toFixed(1)}%`;
+  const formatDepth = (value = 0) => Number(value || 0).toFixed(1);
+  const setPresetTrafficRange = (mode) => {
+    setTrafficRangeMode(mode);
+    if (mode === "today") setTrafficRange(getRecentDateRange(1));
+    if (mode === "3days") setTrafficRange(getRecentDateRange(3));
+    if (mode === "7days") setTrafficRange(getRecentDateRange(7));
+  };
   const filteredDiamonds = diamonds.filter((diamond) => {
     const keyword = `${diamond.id} ${shapeLabel(diamond.shape)} ${diamond.color} ${diamond.clarity} ${diamond.certificate}`.toLowerCase();
     return keyword.includes(productSearch.toLowerCase());
@@ -3992,11 +4007,9 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   useEffect(() => {
     fetchAdminOrders()
       .then((remoteOrders) => {
-        if (remoteOrders.length) {
-          const mappedOrders = remoteOrders.map(mapApiOrderToAdminOrder);
-          setOrders(mappedOrders);
-          setSelectedOrderId(mappedOrders[0].id);
-        }
+        const mappedOrders = remoteOrders.map(mapApiOrderToAdminOrder);
+        setOrders(mappedOrders);
+        setSelectedOrderId(mappedOrders[0]?.id ?? "");
       })
       .catch((error) => {
         setApiNotice(`暂未读取真实订单：${error.message}`);
@@ -4004,12 +4017,12 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   }, []);
 
   useEffect(() => {
-    fetchAdminAnalyticsSummary()
+    fetchAdminAnalyticsSummary(trafficRange)
       .then((summary) => setAnalyticsSummary(summary))
       .catch((error) => {
         setApiNotice(`暂未读取真实统计：${error.message}`);
       });
-  }, []);
+  }, [trafficRange.startDate, trafficRange.endDate]);
 
   return (
     <main className="admin-page">
@@ -4318,6 +4331,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                         </span>
                       </div>
                     ))}
+                    {!filteredOrders.length ? <div className="admin-row"><span>暂无真实订单</span><span>测试订单数据已清除</span><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div> : null}
                   </div>
                 </>
               ) : null}
@@ -4523,18 +4537,70 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
           {adminTab === "traffic" ? (
             <section className="admin-panel large">
               <h2>流量统计</h2>
-              <div className="admin-kpis">
-                <article><span>PV</span><strong>{analyticsSummary?.traffic?.pageViews ?? 0}</strong></article>
-                <article><span>商品浏览</span><strong>{analyticsSummary?.traffic?.productViews ?? 0}</strong></article>
-                <article><span>加购</span><strong>{analyticsSummary?.traffic?.addToCart ?? 0}</strong></article>
-                <article><span>开始结算</span><strong>{analyticsSummary?.traffic?.checkoutStarts ?? 0}</strong></article>
-                <article><span>PayPal 发起</span><strong>{analyticsSummary?.traffic?.paypalStarts ?? 0}</strong></article>
-                <article><span>成功付款</span><strong>{analyticsSummary?.traffic?.paypalPaid ?? 0}</strong></article>
+              <div className="traffic-rangebar">
+                <div className="traffic-range-presets">
+                  {[
+                    ["today", "当天"],
+                    ["3days", "3天"],
+                    ["7days", "7天"],
+                    ["custom", "自定义"]
+                  ].map(([mode, label]) => (
+                    <button className={trafficRangeMode === mode ? "active" : ""} key={mode} onClick={() => setPresetTrafficRange(mode)}>{label}</button>
+                  ))}
+                </div>
+                <label>
+                  开始日期
+                  <input
+                    type="date"
+                    value={trafficRange.startDate}
+                    onChange={(event) => {
+                      setTrafficRangeMode("custom");
+                      setTrafficRange((current) => ({ ...current, startDate: event.target.value }));
+                    }}
+                  />
+                </label>
+                <label>
+                  结束日期
+                  <input
+                    type="date"
+                    value={trafficRange.endDate}
+                    onChange={(event) => {
+                      setTrafficRangeMode("custom");
+                      setTrafficRange((current) => ({ ...current, endDate: event.target.value }));
+                    }}
+                  />
+                </label>
+                <span>{trafficRange.startDate} 至 {trafficRange.endDate}</span>
               </div>
-              <div className="admin-funnel"><span>访客访问</span><span>浏览商品</span><span>加入购物车</span><span>提交订单</span><span>成功付款</span></div>
+              <div className="admin-kpis">
+                <article><span>PV</span><strong>{traffic.pageViews ?? 0}</strong></article>
+                <article><span>UV / 访客</span><strong>{traffic.uniqueVisitors ?? 0}</strong></article>
+                <article><span>商品浏览</span><strong>{traffic.productViews ?? 0}</strong></article>
+                <article><span>加购</span><strong>{traffic.addToCart ?? 0}</strong></article>
+                <article><span>提交订单</span><strong>{traffic.orderSubmits ?? 0}</strong></article>
+                <article><span>成功付款</span><strong>{traffic.paypalPaid ?? 0}</strong></article>
+                <article><span>平均访问深度</span><strong>{formatDepth(traffic.averageVisitDepth)}</strong><small>页 / 访客</small></article>
+                <article><span>跳出率</span><strong>{formatRate(traffic.bounceRate)}</strong></article>
+              </div>
+              <div className="admin-funnel">
+                {trafficFunnel.map((step) => (
+                  <span key={step.key || step.label}>
+                    <strong>{step.count ?? 0}</strong>
+                    <em>{step.label}</em>
+                    <small>总转化 {formatRate(step.totalRate)}</small>
+                    <small>上一步 {formatRate(step.previousRate)}</small>
+                  </span>
+                ))}
+              </div>
               <div className="admin-columns">
-                <article><h3>页面排行</h3>{(analyticsSummary?.traffic?.topPages ?? []).length ? (analyticsSummary?.traffic?.topPages ?? []).map((item) => <p key={item.path}>{item.path}：{item.count}</p>) : <p>暂无访问事件，页面被浏览后会自动记录。</p>}</article>
-                <article><h3>转化漏斗</h3><p>从 PV、商品浏览、加购、结算、PayPal 发起、付款成功逐步统计。</p></article>
+                <article><h3>页面排行</h3>{(traffic.topPages ?? []).length ? (traffic.topPages ?? []).map((item) => <p key={item.path}>{item.path}：{item.count}</p>) : <p>暂无访问事件，页面被浏览后会自动记录。</p>}</article>
+                <article>
+                  <h3>访问深度</h3>
+                  <p>平均访问深度：{formatDepth(traffic.averageVisitDepth)} 页；平均去重页面：{formatDepth(traffic.averageUniquePages)} 页；最大访问深度：{traffic.maxVisitDepth ?? 0} 页。</p>
+                  {(traffic.depthBuckets ?? []).length ? (traffic.depthBuckets ?? []).map((item) => <p key={item.label}>{item.label}：{item.count} 位访客</p>) : <p>暂无访问深度数据。</p>}
+                </article>
+                <article><h3>入口页</h3>{(traffic.topLandingPages ?? []).length ? (traffic.topLandingPages ?? []).map((item) => <p key={item.path}>{item.path}：{item.count}</p>) : <p>暂无入口页数据。</p>}</article>
+                <article><h3>统计完整度</h3><p>当前已覆盖 PV、UV、商品浏览、加购、开始结算、提交订单、PayPal 发起与付款成功；统计按 session 聚合，只展示汇总结果。</p></article>
                 <article><h3>来源分析</h3><p>当前为站内事件统计；上线后可再接 Google Analytics / Meta Pixel 做广告来源归因。</p></article>
               </div>
             </section>
@@ -4991,7 +5057,8 @@ export function App() {
       eventType: "page_view",
       pagePath: window.location.pathname,
       productId: page === "product" ? selectedProduct?.id : undefined,
-      sessionId: getAnalyticsSessionId()
+      sessionId: getAnalyticsSessionId(),
+      metadata: { title: document.title, referrer: document.referrer || "" }
     }).catch(() => {});
     if (page === "product" && selectedProduct?.id) {
       trackAnalyticsEvent({

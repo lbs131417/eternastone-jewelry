@@ -126,6 +126,17 @@ function moneyValue(value) {
   return Math.max(0, toNumber(value)).toFixed(2);
 }
 
+function parseDateBoundary(value, endOfDay = false) {
+  if (!value) return null;
+  const dateText = String(value).trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateText)
+    ? new Date(`${dateText}T00:00:00`)
+    : new Date(dateText);
+  if (Number.isNaN(date.getTime())) return null;
+  if (endOfDay) date.setDate(date.getDate() + 1);
+  return date.toISOString();
+}
+
 function normalizeMainMaterial(value = "") {
   const material = String(value).toLowerCase();
   if (material.includes("黄金") || material.includes("yellow")) return "Yellow Gold";
@@ -449,7 +460,7 @@ function rowToOrder(row = {}) {
   };
 }
 
-function summarizeAdminData(orders = [], events = []) {
+function summarizeAdminData(orders = [], events = [], trafficOrders = orders) {
   const paidOrders = orders.filter((order) => ["已付款", "制作中", "已发货", "已完成"].includes(order.order_status || order.status));
   const refundedOrders = orders.filter((order) => ["退款中", "已退款"].includes(order.order_status || order.status));
   const salesAmount = paidOrders.reduce((sum, order) => sum + toNumber(order.order_amount ?? order.total), 0);
@@ -468,11 +479,61 @@ function summarizeAdminData(orders = [], events = []) {
     });
   });
   const eventCount = (type) => events.filter((event) => event.event_type === type).length;
+  const orderSubmitCount = eventCount("order_submit");
+  const trafficOrderCount = Array.isArray(trafficOrders) ? trafficOrders.length : 0;
   const pageCounts = new Map();
   events.filter((event) => event.event_type === "page_view").forEach((event) => {
     const key = event.page_path || "/";
     pageCounts.set(key, (pageCounts.get(key) || 0) + 1);
   });
+  const sessionMap = new Map();
+  events.forEach((event) => {
+    const sessionId = event.session_id || event.customer_email || `anonymous-${event.id || Math.random()}`;
+    const session = sessionMap.get(sessionId) || { sessionId, events: [], eventTypes: new Set(), pageViews: [], uniquePages: new Set() };
+    session.events.push(event);
+    session.eventTypes.add(event.event_type);
+    if (event.event_type === "page_view") {
+      const pagePath = event.page_path || "/";
+      session.pageViews.push(event);
+      session.uniquePages.add(pagePath);
+    }
+    sessionMap.set(sessionId, session);
+  });
+  const sessions = Array.from(sessionMap.values()).map((session) => ({
+    ...session,
+    events: session.events.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)),
+    pageViews: session.pageViews.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+  }));
+  const activeSessions = sessions.filter((session) => session.pageViews.length || session.events.length);
+  const countSessionsWith = (type) => activeSessions.filter((session) => session.eventTypes.has(type)).length;
+  const totalPageDepth = activeSessions.reduce((sum, session) => sum + session.pageViews.length, 0);
+  const totalUniqueDepth = activeSessions.reduce((sum, session) => sum + session.uniquePages.size, 0);
+  const depthBuckets = [
+    { label: "1页", min: 1, max: 1 },
+    { label: "2-3页", min: 2, max: 3 },
+    { label: "4-5页", min: 4, max: 5 },
+    { label: "6页以上", min: 6, max: Infinity }
+  ].map((bucket) => ({
+    label: bucket.label,
+    count: activeSessions.filter((session) => session.pageViews.length >= bucket.min && session.pageViews.length <= bucket.max).length
+  }));
+  const landingPageCounts = new Map();
+  activeSessions.forEach((session) => {
+    const firstPage = session.pageViews[0]?.page_path || session.events[0]?.page_path || "/";
+    landingPageCounts.set(firstPage, (landingPageCounts.get(firstPage) || 0) + 1);
+  });
+  const funnelCounts = [
+    { key: "visit", label: "访客访问", count: activeSessions.length },
+    { key: "product_view", label: "浏览商品", count: countSessionsWith("product_view") },
+    { key: "add_to_cart", label: "加入购物车", count: countSessionsWith("add_to_cart") },
+    { key: "checkout_start", label: "开始结算", count: countSessionsWith("checkout_start") },
+    { key: "order_submit", label: "提交订单", count: Math.max(countSessionsWith("order_submit"), trafficOrderCount) },
+    { key: "paypal_paid", label: "成功付款", count: countSessionsWith("paypal_paid") }
+  ].map((step, index, list) => ({
+    ...step,
+    totalRate: list[0]?.count ? step.count / list[0].count : 0,
+    previousRate: index === 0 ? 1 : list[index - 1].count ? step.count / list[index - 1].count : 0
+  }));
   return {
     orders: {
       total: orders.length,
@@ -488,8 +549,17 @@ function summarizeAdminData(orders = [], events = []) {
       productViews: eventCount("product_view"),
       addToCart: eventCount("add_to_cart"),
       checkoutStarts: eventCount("checkout_start"),
+      orderSubmits: orderSubmitCount || trafficOrderCount,
       paypalStarts: eventCount("paypal_start"),
       paypalPaid: eventCount("paypal_paid"),
+      uniqueVisitors: activeSessions.length,
+      averageVisitDepth: activeSessions.length ? totalPageDepth / activeSessions.length : 0,
+      averageUniquePages: activeSessions.length ? totalUniqueDepth / activeSessions.length : 0,
+      maxVisitDepth: activeSessions.reduce((max, session) => Math.max(max, session.pageViews.length), 0),
+      bounceRate: activeSessions.length ? activeSessions.filter((session) => session.pageViews.length <= 1).length / activeSessions.length : 0,
+      funnel: funnelCounts,
+      depthBuckets,
+      topLandingPages: Array.from(landingPageCounts.entries()).map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, 8),
       topPages: Array.from(pageCounts.entries()).map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, 8)
     }
   };
@@ -958,13 +1028,39 @@ app.post("/api/analytics/events", spamGuard, async (req, res, next) => {
   }
 });
 
-app.get("/api/analytics/summary", requireAdminToken, async (_req, res, next) => {
+app.get("/api/analytics/summary", requireAdminToken, async (req, res, next) => {
   try {
+    const startIso = parseDateBoundary(req.query.start);
+    const endIso = parseDateBoundary(req.query.end || req.query.start, true);
+    const timeFilters = [
+      startIso ? `created_at=gte.${encodeURIComponent(startIso)}` : "",
+      endIso ? `created_at=lt.${encodeURIComponent(endIso)}` : ""
+    ].filter(Boolean).join("&");
+    const analyticsPath = `/analytics_events?select=*&order=created_at.desc&limit=5000${timeFilters ? `&${timeFilters}` : ""}`;
     const [orders, events] = await Promise.all([
       supabaseRequest("/orders?select=*&order=created_at.desc&limit=1000", { admin: true }),
-      supabaseRequest("/analytics_events?select=*&order=created_at.desc&limit=5000", { admin: true })
+      supabaseRequest(analyticsPath, { admin: true })
     ]);
-    res.json({ data: summarizeAdminData(orders, events) });
+    const trafficOrders = startIso || endIso
+      ? orders.filter((order) => {
+        const createdAt = new Date(order.created_at || order.ordered_at || 0).getTime();
+        if (!createdAt) return false;
+        if (startIso && createdAt < new Date(startIso).getTime()) return false;
+        if (endIso && createdAt >= new Date(endIso).getTime()) return false;
+        return true;
+      })
+      : orders;
+    res.json({
+      data: {
+        ...summarizeAdminData(orders, events, trafficOrders),
+        range: {
+          start: req.query.start || "",
+          end: req.query.end || req.query.start || "",
+          startIso,
+          endIso
+        }
+      }
+    });
   } catch (error) {
     next(error);
   }

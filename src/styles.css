@@ -4094,6 +4094,66 @@ h2 {
   margin-bottom: 16px;
 }
 
+.traffic-rangebar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 160px 160px auto;
+  align-items: end;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid rgba(212, 184, 134, 0.28);
+  border-radius: 14px;
+  background: #fffaf0;
+}
+
+.traffic-range-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.traffic-range-presets button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgba(39, 34, 28, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #3b3024;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.traffic-range-presets button.active {
+  border-color: #2b241c;
+  background: #211c17;
+  color: #f4ddb0;
+}
+
+.traffic-rangebar label {
+  display: grid;
+  gap: 5px;
+  color: #6f6354;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.traffic-rangebar input {
+  min-height: 38px;
+  border: 1px solid rgba(39, 34, 28, 0.16);
+  border-radius: 9px;
+  background: #fff;
+  padding: 0 10px;
+  color: #2a251f;
+  font: inherit;
+  font-weight: 800;
+}
+
+.traffic-rangebar > span {
+  color: #7a6a55;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .product-filterbar {
   grid-template-columns: minmax(260px, 1fr) 160px 160px auto;
 }
@@ -4635,19 +4695,38 @@ h2 {
 
 .admin-funnel {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin: 12px 0 18px;
 }
 
 .admin-funnel span {
   position: relative;
-  padding: 18px 12px;
+  display: grid;
+  gap: 4px;
+  padding: 14px 12px;
   border-radius: 8px;
   background: linear-gradient(135deg, #201c17, #3b3021);
   color: #f4ddb0;
   text-align: center;
   font-weight: 800;
+}
+
+.admin-funnel strong {
+  color: #fffaf0;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.admin-funnel em {
+  color: #f4ddb0;
+  font-style: normal;
+}
+
+.admin-funnel small {
+  color: rgba(244, 221, 176, 0.72);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 @media (max-width: 1180px) {
@@ -4669,6 +4748,15 @@ h2 {
 
   .admin-filterbar {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .traffic-rangebar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .traffic-range-presets,
+  .traffic-rangebar > span {
+    grid-column: 1 / -1;
   }
 
   .admin-diamond-table .admin-row,
@@ -4715,6 +4803,7 @@ h2 {
   .diamond-form,
   .admin-columns,
   .admin-filterbar,
+  .traffic-rangebar,
   .admin-funnel {
     grid-template-columns: 1fr;
   }

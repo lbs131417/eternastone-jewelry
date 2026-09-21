@@ -158,8 +158,12 @@ export async function trackAnalyticsEvent(event) {
   return parseJsonResponse(response);
 }
 
-export async function fetchAdminAnalyticsSummary() {
-  const response = await apiFetch("/analytics/summary", {
+export async function fetchAdminAnalyticsSummary(params = {}) {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set("start", params.startDate);
+  if (params.endDate) query.set("end", params.endDate);
+  const path = `/analytics/summary${query.toString() ? `?${query.toString()}` : ""}`;
+  const response = await apiFetch(path, {
     headers: adminHeaders()
   });
   const payload = await parseJsonResponse(response);

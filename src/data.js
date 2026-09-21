@@ -1,13 +1,13 @@
 export const shapes = [
-  { key: "round", label: "Round", zh: "圆形", image: new URL("./assets/shape-round-transparent.webp", import.meta.url).href, path: "M50 10a40 40 0 1 0 0 80 40 40 0 0 0 0-80Zm0 0 17 40-17 40-17-40L50 10Zm-40 40h80M23 23l54 54M77 23 23 77" },
-  { key: "emerald", label: "Emerald", zh: "祖母绿形", image: new URL("./assets/shape-emerald-transparent.webp", import.meta.url).href, path: "M28 10h44l18 18v44L72 90H28L10 72V28L28 10Zm0 0v80M72 10v80M10 28h80M10 72h80M28 28h44v44H28z" },
-  { key: "pear", label: "Pear", zh: "水滴形", image: new URL("./assets/shape-pear-transparent.webp", import.meta.url).href, path: "M50 8C34 28 19 42 19 62a31 31 0 0 0 62 0C81 42 66 28 50 8Zm0 0v82M26 49h48M31 74l38-38M69 74 31 36" },
+  { key: "round", label: "Round", zh: "圆形", image: new URL("./assets/shape-round.webp", import.meta.url).href, path: "M50 10a40 40 0 1 0 0 80 40 40 0 0 0 0-80Zm0 0 17 40-17 40-17-40L50 10Zm-40 40h80M23 23l54 54M77 23 23 77" },
+  { key: "emerald", label: "Emerald", zh: "祖母绿形", image: new URL("./assets/shape-emerald.webp", import.meta.url).href, path: "M28 10h44l18 18v44L72 90H28L10 72V28L28 10Zm0 0v80M72 10v80M10 28h80M10 72h80M28 28h44v44H28z" },
+  { key: "pear", label: "Pear", zh: "水滴形", image: new URL("./assets/shape-pear.webp", import.meta.url).href, path: "M50 8C34 28 19 42 19 62a31 31 0 0 0 62 0C81 42 66 28 50 8Zm0 0v82M26 49h48M31 74l38-38M69 74 31 36" },
   { key: "asscher", label: "Asscher", zh: "阿斯切形", image: new URL("./assets/shape-asscher-transparent.webp", import.meta.url).href, path: "M25 10h50l15 15v50L75 90H25L10 75V25L25 10Zm9 15h32l9 9v32l-9 9H34l-9-9V34l9-9Zm-9-15 9 15M75 10l-9 15M90 25l-15 9M90 75l-15-9M75 90l-9-15M25 90l9-15M10 75l15-9M10 25l15 9" },
   { key: "cushion", label: "Cushion", zh: "长垫形", image: new URL("./assets/shape-cushion.webp", import.meta.url).href, path: "M24 12h52c7 0 12 5 12 12v52c0 7-5 12-12 12H24c-7 0-12-5-12-12V24c0-7 5-12 12-12Zm5 15h42c2 0 4 2 4 4v38c0 2-2 4-4 4H29c-2 0-4-2-4-4V31c0-2 2-4 4-4Zm21-15v76M12 50h76M25 25l50 50M75 25 25 75" },
-  { key: "oval", label: "Oval", zh: "椭圆形", image: new URL("./assets/shape-oval-transparent.webp", import.meta.url).href, path: "M50 8c20 0 34 19 34 42S70 92 50 92 16 73 16 50 30 8 50 8Zm0 0 16 42-16 42-16-42L50 8Zm-34 42h68M27 23l46 54M73 23 27 77" },
+  { key: "oval", label: "Oval", zh: "椭圆形", image: new URL("./assets/shape-oval.webp", import.meta.url).href, path: "M50 8c20 0 34 19 34 42S70 92 50 92 16 73 16 50 30 8 50 8Zm0 0 16 42-16 42-16-42L50 8Zm-34 42h68M27 23l46 54M73 23 27 77" },
   { key: "heart", label: "Heart", zh: "心形", image: new URL("./assets/shape-heart-transparent.webp", import.meta.url).href, path: "M50 88C25 66 13 51 13 33c0-12 9-21 21-21 7 0 13 4 16 10 3-6 9-10 16-10 12 0 21 9 21 21 0 18-12 33-37 55Zm0 0V22M20 42h60M30 20l40 56M70 20 30 76" },
   { key: "marquise", label: "Marquise", zh: "马眼形", image: new URL("./assets/shape-marquise-transparent.webp", import.meta.url).href, path: "M5 50C22 22 37 12 50 12s28 10 45 38C78 78 63 88 50 88S22 78 5 50Zm0 0h90M50 12v76M25 31l50 38M75 31 25 69" },
-  { key: "radiant", label: "Radiant", zh: "放射方形", image: new URL("./assets/shape-radiant-transparent.webp", import.meta.url).href, path: "M23 10h54l13 13v54L77 90H23L10 77V23L23 10Zm0 0 54 80M77 10 23 90M10 23l80 54M90 23 10 77M50 10v80M10 50h80M28 28h44v44H28z" }
+  { key: "radiant", label: "Radiant", zh: "放射方形", image: new URL("./assets/shape-radiant.webp", import.meta.url).href, path: "M23 10h54l13 13v54L77 90H23L10 77V23L23 10Zm0 0 54 80M77 10 23 90M10 23l80 54M90 23 10 77M50 10v80M10 50h80M28 28h44v44H28z" }
 ];
 
 export const categories = [
