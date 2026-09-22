@@ -3881,6 +3881,79 @@ h2 {
   transform: translateY(-1px);
 }
 
+.admin-login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.admin-login-card {
+  width: min(100%, 460px);
+  padding: 34px;
+  border: 1px solid rgba(212, 184, 134, 0.34);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(255, 250, 240, 0.92)),
+    radial-gradient(circle at 92% 8%, rgba(212, 184, 134, 0.18), transparent 14rem);
+  box-shadow: 0 24px 70px rgba(68, 48, 18, 0.12);
+}
+
+.admin-login-card > svg {
+  width: 42px;
+  height: 42px;
+  color: #c19a4d;
+}
+
+.admin-login-card h1 {
+  margin: 8px 0 10px;
+  color: #201c16;
+  font-size: clamp(30px, 6vw, 48px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-login-card p {
+  margin: 0 0 22px;
+  color: #6e6252;
+  line-height: 1.8;
+}
+
+.admin-login-card form,
+.admin-login-card label {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-login-card label {
+  color: #6d614f;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.admin-login-card input {
+  min-height: 46px;
+  border: 1px solid rgba(212, 184, 134, 0.34);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 14px;
+  color: #201c16;
+  font: inherit;
+}
+
+.admin-login-card form > span {
+  color: #9a5b1d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-login-card .ghost-btn {
+  display: inline-grid;
+  place-items: center;
+  min-height: 44px;
+  text-decoration: none;
+}
+
 .admin-token-box {
   display: grid;
   grid-template-columns: minmax(220px, 300px) auto;

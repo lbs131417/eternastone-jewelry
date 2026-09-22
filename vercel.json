@@ -1,7 +1,7 @@
 {
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
-    { "source": "/admin", "destination": "/index.html" },
+    { "source": "/everastone-private-admin-portal-9f3k7x", "destination": "/index.html" },
     { "source": "/account", "destination": "/index.html" },
     { "source": "/cart", "destination": "/index.html" },
     { "source": "/diamonds", "destination": "/index.html" },

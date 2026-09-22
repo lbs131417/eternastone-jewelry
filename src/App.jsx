@@ -544,6 +544,7 @@ const getTryOnDiamondSize = (shape, carat) => {
 const heroRingImage = new URL("./assets/everastone-hero-ring-optimized.jpg", import.meta.url).href;
 const warmGoldHero = new URL("./assets/everastone-hero-warm-gold-optimized.jpg", import.meta.url).href;
 const whatsappDesignerQr = new URL("./assets/whatsapp-designer-qr.png", import.meta.url).href;
+const ADMIN_ENTRY_PATH = "/everastone-private-admin-portal-9f3k7x";
 const pageToPath = {
   home: "/",
   diamonds: "/diamonds",
@@ -553,7 +554,7 @@ const pageToPath = {
   account: "/account",
   blog: "/blog",
   content: "/collection",
-  admin: "/admin"
+  admin: ADMIN_ENTRY_PATH
 };
 
 const contentPaths = {
@@ -720,7 +721,7 @@ const homeCopy = {
 };
 
 const pageFromPath = (pathname) => {
-  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname === ADMIN_ENTRY_PATH || pathname.startsWith(`${ADMIN_ENTRY_PATH}/`)) return "admin";
   if (pathname.startsWith("/diamonds")) return "diamonds";
   if (pathname.startsWith("/product")) return "product";
   if (pathname.startsWith("/cart")) return "cart";
@@ -3228,6 +3229,58 @@ const mapApiOrderToAdminOrder = (order = {}) => {
   };
 };
 
+function AdminLoginGate(props) {
+  const [token, setToken] = useState(() => getAdminApiToken());
+  const [authenticated, setAuthenticated] = useState(() => Boolean(getAdminApiToken()));
+  const [notice, setNotice] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  const login = async (event) => {
+    event.preventDefault();
+    const cleanToken = token.trim();
+    if (!cleanToken) {
+      setNotice("请输入管理员 Token。");
+      return;
+    }
+    setChecking(true);
+    setNotice("正在验证管理员权限...");
+    try {
+      setAdminApiToken(cleanToken);
+      await fetchAdminOrders();
+      setAuthenticated(true);
+      setNotice("");
+    } catch (error) {
+      setAdminApiToken("");
+      setAuthenticated(false);
+      setNotice(error.message || "管理员 Token 验证失败。");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  if (authenticated) return <Admin {...props} />;
+
+  return (
+    <main className="admin-page admin-login-page">
+      <section className="admin-login-card">
+        <LayoutDashboard />
+        <p className="eyebrow">EVERASTONE ADMIN</p>
+        <h1>管理员登录</h1>
+        <p>请输入后台管理员 Token 后继续。未登录状态不会加载后台数据，也不会计入流量统计。</p>
+        <form onSubmit={login}>
+          <label>
+            管理员 Token
+            <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="请输入 ADMIN_API_TOKEN" autoComplete="current-password" />
+          </label>
+          {notice ? <span>{notice}</span> : null}
+          <button className="primary-btn" type="submit" disabled={checking}>{checking ? "验证中..." : "登录后台"}</button>
+          <a className="ghost-btn" href="/">返回前台官网</a>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, setBlogPosts }) {
   const [adminTab, setAdminTab] = useState("products");
   const [adminTokenInput, setAdminTokenInput] = useState(() => getAdminApiToken());
@@ -5053,9 +5106,12 @@ export function App() {
     } else if (existingJsonLd) {
       existingJsonLd.remove();
     }
+    const currentPath = window.location.pathname;
+    const isAdminRelatedPath = currentPath.startsWith("/admin") || currentPath === ADMIN_ENTRY_PATH || currentPath.startsWith(`${ADMIN_ENTRY_PATH}/`);
+    if (page === "admin" || isAdminRelatedPath) return;
     trackAnalyticsEvent({
       eventType: "page_view",
-      pagePath: window.location.pathname,
+      pagePath: currentPath,
       productId: page === "product" ? selectedProduct?.id : undefined,
       sessionId: getAnalyticsSessionId(),
       metadata: { title: document.title, referrer: document.referrer || "" }
@@ -5063,7 +5119,7 @@ export function App() {
     if (page === "product" && selectedProduct?.id) {
       trackAnalyticsEvent({
         eventType: "product_view",
-        pagePath: window.location.pathname,
+        pagePath: currentPath,
         productId: selectedProduct.id,
         sessionId: getAnalyticsSessionId(),
         metadata: { name: selectedProduct.name, price: selectedProduct.price }
@@ -5124,7 +5180,7 @@ export function App() {
       {page === "account" ? <Account setPage={setPage} /> : null}
       {page === "blog" ? <BlogPage posts={blogPosts} diamonds={diamonds} openProduct={openProduct} blogSlug={blogSlug} setPage={setPage} /> : null}
       {page === "content" ? <ContentPage contentKey={contentKey} setPage={setPage} diamonds={diamonds} openProduct={openProduct} addToCart={addToCart} /> : null}
-      {page === "admin" ? <Admin diamonds={diamonds} setDiamonds={setDiamonds} socialLinks={socialLinks} setSocialLinks={setSocialLinks} blogPosts={blogPosts} setBlogPosts={setBlogPosts} /> : null}
+      {page === "admin" ? <AdminLoginGate diamonds={diamonds} setDiamonds={setDiamonds} socialLinks={socialLinks} setSocialLinks={setSocialLinks} blogPosts={blogPosts} setBlogPosts={setBlogPosts} /> : null}
       {page !== "admin" ? <Footer openContent={openContent} setPage={setPage} socialLinks={socialLinks} /> : null}
       {page !== "admin" ? <SupportChatWidget /> : null}
       {page !== "admin" ? <FirstOrderOfferPopup /> : null}

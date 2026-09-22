@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /everastone-private-admin-portal-9f3k7x
+Disallow: /everastone-private-admin-portal-9f3k7x/
 
 Sitemap: https://www.everastone.com/sitemap.xml

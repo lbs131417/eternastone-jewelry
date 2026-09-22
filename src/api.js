@@ -150,12 +150,18 @@ export async function lookupGuestOrders(email) {
 }
 
 export async function trackAnalyticsEvent(event) {
-  const response = await apiFetch("/analytics/events", {
+  const request = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(event)
-  });
-  return parseJsonResponse(response);
+  };
+  try {
+    const response = await apiFetch("/events/collect", request);
+    return await parseJsonResponse(response);
+  } catch (error) {
+    const fallbackResponse = await apiFetch("/analytics/events", request);
+    return parseJsonResponse(fallbackResponse);
+  }
 }
 
 export async function fetchAdminAnalyticsSummary(params = {}) {

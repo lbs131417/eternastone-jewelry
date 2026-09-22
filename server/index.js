@@ -137,6 +137,11 @@ function parseDateBoundary(value, endOfDay = false) {
   return date.toISOString();
 }
 
+function isAdminAnalyticsPath(path = "") {
+  const value = String(path || "");
+  return value.startsWith("/admin") || value.startsWith("/everastone-private-admin-portal-9f3k7x");
+}
+
 function normalizeMainMaterial(value = "") {
   const material = String(value).toLowerCase();
   if (material.includes("黄金") || material.includes("yellow")) return "Yellow Gold";
@@ -461,6 +466,7 @@ function rowToOrder(row = {}) {
 }
 
 function summarizeAdminData(orders = [], events = [], trafficOrders = orders) {
+  events = events.filter((event) => !isAdminAnalyticsPath(event.page_path));
   const paidOrders = orders.filter((order) => ["已付款", "制作中", "已发货", "已完成"].includes(order.order_status || order.status));
   const refundedOrders = orders.filter((order) => ["退款中", "已退款"].includes(order.order_status || order.status));
   const salesAmount = paidOrders.reduce((sum, order) => sum + toNumber(order.order_amount ?? order.total), 0);
@@ -1005,24 +1011,39 @@ app.post("/api/orders/lookup", spamGuard, async (req, res, next) => {
   }
 });
 
+async function saveAnalyticsEvent(body = {}) {
+  const pagePath = cleanText(body.pagePath || body.page_path || "");
+  if (isAdminAnalyticsPath(pagePath)) return false;
+  const event = {
+    event_type: cleanText(body.eventType || body.event_type || "page_view", "page_view").slice(0, 80),
+    page_path: pagePath,
+    product_id: body.productId ? cleanText(body.productId) : null,
+    customer_email: body.email ? cleanText(body.email).toLowerCase() : null,
+    session_id: cleanText(body.sessionId || ""),
+    metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {}
+  };
+  await supabaseRequest("/analytics_events", {
+    method: "POST",
+    admin: true,
+    prefer: "return=minimal",
+    body: event
+  });
+  return true;
+}
+
+app.post("/api/events/collect", spamGuard, async (req, res, next) => {
+  try {
+    const saved = await saveAnalyticsEvent(req.body || {});
+    res.status(saved ? 201 : 204).json(saved ? { ok: true } : {});
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/analytics/events", spamGuard, async (req, res, next) => {
   try {
-    const body = req.body || {};
-    const event = {
-      event_type: cleanText(body.eventType || body.event_type || "page_view", "page_view").slice(0, 80),
-      page_path: cleanText(body.pagePath || body.page_path || ""),
-      product_id: body.productId ? cleanText(body.productId) : null,
-      customer_email: body.email ? cleanText(body.email).toLowerCase() : null,
-      session_id: cleanText(body.sessionId || ""),
-      metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {}
-    };
-    await supabaseRequest("/analytics_events", {
-      method: "POST",
-      admin: true,
-      prefer: "return=minimal",
-      body: event
-    });
-    res.status(201).json({ ok: true });
+    const saved = await saveAnalyticsEvent(req.body || {});
+    res.status(saved ? 201 : 204).json(saved ? { ok: true } : {});
   } catch (error) {
     next(error);
   }
