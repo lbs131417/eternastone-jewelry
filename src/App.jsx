@@ -386,7 +386,7 @@ const getProductMedia = (product = {}, material = "") => {
 const getPrimaryProductImage = (product = {}) => {
   const materialImages = product.materialImages ?? {};
   const firstMaterialImage = materialImageGroups.flatMap((group) => materialImages[group.key] ?? []).find(Boolean);
-  return firstMaterialImage || product.images?.[0] || product.image || shapes.find((shape) => shape.key === normalizeShapeKey(product.shape))?.image;
+  return product.image || firstMaterialImage || product.images?.[0] || shapes.find((shape) => shape.key === normalizeShapeKey(product.shape))?.image;
 };
 const storefrontProductCategories = new Set(["engagement", "jewelry", "couple", "designer"]);
 const coupleAdminCategories = new Set(["couple", "couple_pair", "couple_female", "couple_male"]);
@@ -3465,7 +3465,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
   const currentProducts = productCatalog.filter((product) => {
     const keyword = `${product.name} ${product.sku} ${product.material} ${product.shape} ${product.status}`.toLowerCase();
     return getProductAdminCategory(product) === productTab && keyword.includes(productSearch.toLowerCase());
-  }).sort((a, b) => (Number(getLowestPricedVariant(a)?.price) || a.price) - (Number(getLowestPricedVariant(b)?.price) || b.price));
+  }).sort((a, b) => getProductCreatedTime(b) - getProductCreatedTime(a));
   const openProductModal = (mode, product = null) => {
     if (product) {
       setEditingProductId(product.id);
@@ -3591,7 +3591,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       totalCarat: coupleAdminCategories.has(productTab) ? productDraft.totalCarat : "",
       price: Number(firstSellableVariant?.price ?? productDraft.price) || 0,
       stock: totalStock,
-      image: productDraft.image || allMaterialImages[0] || "",
+      image: allMaterialImages[0] || productDraft.image || "",
       images: allMaterialImages,
       materialImages,
       videoUrls: (productDraft.videoUrls ?? []).filter(Boolean),
@@ -3663,6 +3663,12 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
       logAction(`删除商品 ${product.sku} 失败：${error.message}`);
     }
   };
+  const getOrderedMaterialImages = (materialImages = {}) => materialImageGroups
+    .flatMap((group) => (materialImages[group.key] ?? []).filter(Boolean));
+  const syncDraftPrimaryImage = (draft) => ({
+    ...draft,
+    image: getOrderedMaterialImages(draft.materialImages ?? {})[0] || (draft.images ?? []).filter(Boolean)[0] || ""
+  });
   const handleProductImageUpload = (event) => {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
@@ -3695,9 +3701,8 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         }
       };
       reader.readAsDataURL(file);
-    }))).then((images) => setProductDraft((current) => ({
+    }))).then((images) => setProductDraft((current) => syncDraftPrimaryImage({
       ...current,
-      image: current.image || images[0],
       materialImages: {
         ...(current.materialImages ?? {}),
         [groupKey]: [...(current.materialImages?.[groupKey] ?? []), ...images]
@@ -3710,15 +3715,40 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
         ...(current.materialImages ?? {}),
         [groupKey]: (current.materialImages?.[groupKey] ?? []).filter((_, index) => index !== imageIndex)
       };
-      const remainingImages = [
-        ...(current.images ?? []),
-        ...materialImageGroups.flatMap((group) => materialImages[group.key] ?? [])
-      ].filter(Boolean);
-      return {
+      return syncDraftPrimaryImage({
         ...current,
-        image: remainingImages[0] ?? "",
         materialImages
-      };
+      });
+    });
+  };
+  const moveMaterialImage = (groupKey, imageIndex, direction) => {
+    setProductDraft((current) => {
+      const groupImages = [...(current.materialImages?.[groupKey] ?? [])];
+      const targetIndex = imageIndex + direction;
+      if (targetIndex < 0 || targetIndex >= groupImages.length) return current;
+      [groupImages[imageIndex], groupImages[targetIndex]] = [groupImages[targetIndex], groupImages[imageIndex]];
+      return syncDraftPrimaryImage({
+        ...current,
+        materialImages: {
+          ...(current.materialImages ?? {}),
+          [groupKey]: groupImages
+        }
+      });
+    });
+  };
+  const setMaterialImageAsPrimary = (groupKey, imageIndex) => {
+    setProductDraft((current) => {
+      const groupImages = [...(current.materialImages?.[groupKey] ?? [])];
+      if (!groupImages[imageIndex]) return current;
+      const [selectedImage] = groupImages.splice(imageIndex, 1);
+      groupImages.unshift(selectedImage);
+      return syncDraftPrimaryImage({
+        ...current,
+        materialImages: {
+          ...(current.materialImages ?? {}),
+          [groupKey]: groupImages
+        }
+      });
     });
   };
   const updateVideoUrl = (index, value) => {
@@ -4209,7 +4239,7 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                         <>
                           <div className="material-media-editor">
                             <h4>按戒托材质上传商品图</h4>
-                            <p>按 White Gold / Platinum、Yellow Gold、Rose Gold 上传商品图；白金和铂金共用同一套商品图，10K-18K 等纯度会自动归到同一种主材质图片。</p>
+                            <p>按 White Gold / Platinum、Yellow Gold、Rose Gold 上传商品图；白金和铂金共用同一套商品图。每组第一张图会作为该材质展示首图，可用上移、下移、设首图调整顺序。</p>
                             {materialImageGroups.map((group) => (
                               <div className="material-media-card" key={group.key}>
                                 <label className="image-uploader small">
@@ -4220,7 +4250,13 @@ function Admin({ diamonds, setDiamonds, socialLinks, setSocialLinks, blogPosts, 
                                   {(productDraft.materialImages?.[group.key] ?? []).map((image, index) => (
                                     <div className="editable-image-thumb" key={`${group.key}-${index}`}>
                                       <img src={image} alt={`${getProductImageAlt(productDraft)} ${group.label} ${index + 1}`} title={getProductImageTitle(productDraft)} />
-                                      <button type="button" onClick={() => removeMaterialImage(group.key, index)}>删除</button>
+                                      {index === 0 ? <span className="primary-image-badge">首图</span> : null}
+                                      <div className="image-thumb-actions">
+                                        <button type="button" onClick={() => moveMaterialImage(group.key, index, -1)} disabled={index === 0}>上移</button>
+                                        <button type="button" onClick={() => moveMaterialImage(group.key, index, 1)} disabled={index === (productDraft.materialImages?.[group.key] ?? []).length - 1}>下移</button>
+                                        <button type="button" onClick={() => setMaterialImageAsPrimary(group.key, index)} disabled={index === 0}>设首图</button>
+                                        <button type="button" className="danger" onClick={() => removeMaterialImage(group.key, index)}>删除</button>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
