@@ -47,6 +47,10 @@ const money = (value) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 const preciseMoney = (value) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+const FIRST_ORDER_DISCOUNT_RATE = 0.2;
+const FIRST_ORDER_DISCOUNT_PERCENT = Math.round(FIRST_ORDER_DISCOUNT_RATE * 100);
+const getFirstOrderDiscountAmount = (amount) => Math.round((Number(amount) || 0) * FIRST_ORDER_DISCOUNT_RATE * 100) / 100;
+const getFirstOrderPrice = (amount) => Math.max(0, Math.round(((Number(amount) || 0) - getFirstOrderDiscountAmount(amount)) * 100) / 100);
 const getLogisticsInsuranceFee = (amount) => Math.round(Math.max(0, Number(amount) || 0) * 0.02 * 100) / 100;
 const formatArrivalDate = (days = 23) => {
   const date = new Date();
@@ -450,6 +454,21 @@ const getProductCaratRangeLabel = (product = {}) => {
   const max = carats[carats.length - 1];
   return min === max ? `${formatCaratValue(min)} ct` : `${formatCaratValue(min)}–${formatCaratValue(max)} ct`;
 };
+const formatProductCardCaratValue = (carat) => {
+  const value = Number(carat);
+  if (!Number.isFinite(value)) return "";
+  return value < 1 ? value.toFixed(2) : value.toFixed(value % 1 === 0 ? 0 : 2);
+};
+const getProductCardCaratTag = (product = {}) => {
+  if (getProductCategory(product) === "couple" && product.totalCarat) return `${formatProductCardCaratValue(product.totalCarat)}ct`;
+  const carats = getProductVariantCarats(product);
+  if (!carats.length) return "Custom ct";
+  const min = carats[0];
+  const max = carats[carats.length - 1];
+  return min === max
+    ? `${formatProductCardCaratValue(min)}ct`
+    : `${formatProductCardCaratValue(min)}~${formatProductCardCaratValue(max)}ct`;
+};
 const productMatchesCaratRange = (product = {}, min = 0, max = Infinity) => {
   const carats = getProductVariantCarats(product);
   return carats.length ? carats.some((carat) => carat >= min && carat <= max) : false;
@@ -598,9 +617,9 @@ const homeCopy = {
       en: (count) => `Trusted by over ${count.toLocaleString("en-US")} couples. Countless lovers choose everastone for their lifelong promise.`
     },
     {
-      original: "首单享受 10% 折扣，定制钻戒也可享受。",
-      zh: "首单享受折扣 10%",
-      en: "Enjoy 10% off your first order."
+      original: "首单享受 20% 折扣，定制钻戒也可享受。",
+      zh: "首单享受折扣 20%",
+      en: "Enjoy 20% off your first order."
     },
     {
       original: "制作+配送周期约 23 天，可加急处理。",
@@ -1342,16 +1361,24 @@ function ProductCard({ product, openProduct, addToCart }) {
   const cardImage = getProductMedia(product, selectedGroup.label).images?.[0] || getPrimaryProductImage(product);
   const fallbackImage = getPrimaryProductImage(product);
   const firstVariant = getLowestPricedVariant(product);
+  const originalPrice = Number(firstVariant?.price) || Number(product.price) || 0;
+  const offerPrice = getFirstOrderPrice(originalPrice);
+  const savings = getFirstOrderDiscountAmount(originalPrice);
   const quickMetal = firstVariant?.material === "Platinum" ? "Pure Platinum" : `${firstVariant?.purity ?? "18K"} ${firstVariant?.material ?? "White Gold"}`;
+  const displayName = getProductDisplayName(product);
+  const isCoupleCard = getProductCategory(product) === "couple";
+  const tagCarat = getProductCardCaratTag(product);
+  const certificateTag = `${product.certificate ?? "IGI"}${String(product.certificate ?? "").toLowerCase().includes("certified") ? "" : " Certified"}`;
+  const cardTags = [tagCarat, `${product.color ?? "D"} Color`, product.clarity ?? "VS1", certificateTag];
   const openCard = () => openProduct(product.id);
   const quickAdd = (event) => {
     event.stopPropagation();
-    addToCart?.({ ...product, price: firstVariant.price ?? product.price, image: cardImage }, quickMetal, "US 6");
+    addToCart?.({ ...product, price: originalPrice, image: cardImage }, quickMetal, "US 6");
   };
 
   return (
     <article
-      className="product-card"
+      className={isCoupleCard ? "product-card couple-product-card" : "product-card"}
       key={product.id}
       role="button"
       tabIndex={0}
@@ -1374,37 +1401,51 @@ function ProductCard({ product, openProduct, addToCart }) {
           }
         }}
       />
-      <div>
-        <h3>{getProductDisplayName(product)}</h3>
-        {product.imageCaption ? <span className="product-card-caption">{product.imageCaption}</span> : null}
-        <p>{getProductSpecSummary(product)} · {product.color} Color · {product.clarity} Clarity · {product.certificate}</p>
-        <div className="card-price-row">
-          <strong>{getProductFromPriceLabel(product)}</strong>
-          <button className="card-add-btn" type="button" onClick={quickAdd}>Add</button>
+      <div className="product-card-body">
+        <h3 className="product-card-title" title={displayName}>{displayName}</h3>
+        {product.imageCaption ? <span className="product-card-photo-note">{product.imageCaption}</span> : null}
+        {!isCoupleCard ? <div className="product-card-tags" aria-label="Diamond details">
+          {cardTags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div> : null}
+        <div className="card-material-row">
+          <span className="card-metal-label">Metal</span>
+          <div className="card-material-swatches" aria-label="Ring metal preview">
+            {productCardMaterialGroups.map((group) => (
+              <span
+                role="button"
+                tabIndex={0}
+                className={materialGroup === group.key ? `active material-${group.key}` : `material-${group.key}`}
+                key={group.key}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMaterialGroup(group.key);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setMaterialGroup(group.key);
+                  }
+                }}
+              >
+                {getMaterialShortLabel(group.key)}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
-      <div className="card-material-swatches" aria-label="Ring metal preview">
-        {productCardMaterialGroups.map((group) => (
-          <span
-            role="button"
-            tabIndex={0}
-            className={materialGroup === group.key ? `active material-${group.key}` : `material-${group.key}`}
-            key={group.key}
-            onClick={(event) => {
-              event.stopPropagation();
-              setMaterialGroup(group.key);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                event.stopPropagation();
-                setMaterialGroup(group.key);
-              }
-            }}
-          >
-            {getMaterialShortLabel(group.key)}
-          </span>
-        ))}
+        <div className="card-price-block">
+          <div className="card-price-row">
+            <s className="card-original-price">{money(originalPrice)}</s>
+            <strong>{money(offerPrice)}</strong>
+          </div>
+          <div className="card-discount-line">
+            <small className="card-discount-pill">{FIRST_ORDER_DISCOUNT_PERCENT}% OFF</small>
+            <span className="card-save-copy">Save {money(savings)}</span>
+          </div>
+        </div>
+        <button className="card-add-btn" type="button" onClick={quickAdd}>Add</button>
       </div>
     </article>
   );
@@ -1516,7 +1557,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
   const previewDiamondSize = getTryOnDiamondSize(product.shape, previewCarat);
   const tryOnDiamondImage = shapes.find((shape) => shape.key === normalizeShapeKey(product.shape))?.image ?? product.image;
   const displayPrice = Number(selectedVariant?.price) || product.price;
-  const firstOrderPrice = Math.round(displayPrice * 0.9);
+  const firstOrderPrice = getFirstOrderPrice(displayPrice);
   const selectedMetalText = selectedVariant?.material === "Platinum" ? "Pure Platinum" : `${selectedVariant?.purity ?? "18K"} ${selectedVariant?.material ?? "White Gold"}`;
   const engravingSummary = engravingEnabled && engravingText.trim()
     ? ` · Free engraving: "${engravingText.trim()}" (${engravingFont})`
@@ -1728,7 +1769,7 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
           <h1>{getProductDisplayName(product)}</h1>
           <p className="price">{money(displayPrice)}</p>
           <div className="first-order-offer">
-            <span>First Order 10% Off</span>
+            <span>First Order {FIRST_ORDER_DISCOUNT_PERCENT}% Off</span>
             <strong>After offer {money(firstOrderPrice)}</strong>
           </div>
           <p className="live-viewers">{viewerCount} people are viewing this piece</p>
@@ -1759,8 +1800,8 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
           </div>
           <button className="size-chart-trigger" onClick={() => setSizeChartOpen(true)}>View International Ring Size Chart</button>
           <div className="detail-actions purchase-actions" ref={purchaseActionsRef}>
-            <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`)}>Add to Bag</button>
-            <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
+            <button className="primary-btn" onClick={() => addToCart({ ...product, price: displayPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`)}>Add to Bag</button>
+            <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: displayPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
           </div>
           {renderProductStory("product-description-mobile")}
           <button className="favorite-btn" onClick={saveFavorite}><Heart size={16} /> Save to Favorites</button>
@@ -1804,8 +1845,8 @@ function ProductDetailContent({ product, addToCart, setPage, products, openProdu
       {stickyActionsVisible ? (
         <div className="sticky-purchase-bar visible">
           <span>After offer {money(firstOrderPrice)}</span>
-          <button className="primary-btn" onClick={() => addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`)}>Add to Bag</button>
-          <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: firstOrderPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
+          <button className="primary-btn" onClick={() => addToCart({ ...product, price: displayPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`)}>Add to Bag</button>
+          <button className="secondary-btn" onClick={() => { addToCart({ ...product, price: displayPrice, carat: Number(selectedVariant?.carat) || product.carat }, selectedCartSpecs, `${sizeType} ${size}`); setPage("checkout"); }}>Buy Now</button>
         </div>
       ) : null}
       {sizeChartOpen ? (
@@ -1873,7 +1914,7 @@ function Cart({ cart, setCart, setPage, setCheckoutCart }) {
   const selectedCount = selectedItems.reduce((sum, item) => sum + item.qty, 0);
   const allSelected = cart.length > 0 && selectedCartIds.size === cart.length;
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const discount = subtotal * 0.1;
+  const discount = getFirstOrderDiscountAmount(subtotal);
   const tax = 0;
   const shipping = 0;
   const total = subtotal - discount + tax + shipping;
@@ -1934,14 +1975,14 @@ function Cart({ cart, setCart, setPage, setCheckoutCart }) {
         <aside className="summary-panel">
           <h2>Order Summary</h2>
           <p><span>Subtotal</span><strong>{money(subtotal)}</strong></p>
-          <p><span>First order 10% off</span><strong>-{money(discount)}</strong></p>
+          <p><span>First order {FIRST_ORDER_DISCOUNT_PERCENT}% off</span><strong>-{money(discount)}</strong></p>
           <p className="summary-total"><span>Total</span><strong>{money(total)}</strong></p>
           <button className="primary-btn full" disabled={!selectedItems.length} onClick={checkoutSelected}>Checkout</button>
         </aside>
       </div>
       <div className="mobile-cart-promo" aria-hidden={!cart.length}>
         <ShoppingBag size={16} />
-        <span>First order 10% off · insured delivery included at checkout</span>
+        <span>First order {FIRST_ORDER_DISCOUNT_PERCENT}% off · insured delivery included at checkout</span>
       </div>
       <div className="mobile-cart-checkout-bar">
         <label><input type="checkbox" readOnly checked={allSelected} onChange={toggleAll} /> All</label>
@@ -1976,7 +2017,7 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [insuranceSelected, setInsuranceSelected] = useState(false);
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const discount = Math.round(subtotal * 0.1 * 100) / 100;
+  const discount = getFirstOrderDiscountAmount(subtotal);
   const tax = 0;
   const insuranceFee = getLogisticsInsuranceFee(subtotal);
   const shipping = subtotal > 0 && insuranceSelected ? insuranceFee : 0;
@@ -2193,7 +2234,7 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
           </div>
           <div className="summary-panel checkout-summary">
             <p><span>Subtotal</span><strong>{money(subtotal)}</strong></p>
-            <p><span>First order 10% off</span><strong>-{money(discount)}</strong></p>
+            <p><span>First order {FIRST_ORDER_DISCOUNT_PERCENT}% off</span><strong>-{money(discount)}</strong></p>
             <label className="summary-option-row">
               <span><button type="button" className={insuranceSelected ? "switch-toggle on" : "switch-toggle"} onClick={() => setInsuranceSelected((value) => !value)} aria-pressed={insuranceSelected}><i /></button> Logistics insurance</span>
               <strong>{preciseMoney(insuranceFee)}</strong>
@@ -2414,6 +2455,9 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
       </section>
       <section className="designer-track" aria-label="Designer edition products">
         {dedicatedDesignerProducts.map((product, index) => {
+          const originalPrice = Number(getLowestPricedVariant(product)?.price) || Number(product.price) || 0;
+          const offerPrice = getFirstOrderPrice(originalPrice);
+          const savings = getFirstOrderDiscountAmount(originalPrice);
           return (
             <article className="designer-product-card" key={product.id}>
               <span className="designer-index">0{index + 1}</span>
@@ -2425,7 +2469,11 @@ function DesignerStylesPage({ diamonds, openProduct, addToCart }) {
                 <h2>{getProductDisplayName(product)}</h2>
                 {product.designInspiration ? <p>{product.designInspiration}</p> : null}
                 <div className="designer-buy-row">
-                  <strong>{getProductFromPriceLabel(product)}</strong>
+                  <div className="designer-price-stack">
+                    <span>{money(originalPrice)}</span>
+                    <strong>After offer {money(offerPrice)}</strong>
+                    <small>Save {money(savings)} · {FIRST_ORDER_DISCOUNT_PERCENT}% off</small>
+                  </div>
                   <div className="designer-card-actions">
                     <button className="gold-btn" onClick={() => openProduct(product.id)}>View Details</button>
                     <button className="redline-btn" onClick={() => quickAdd(product)}>Add to Bag</button>
@@ -4873,6 +4921,7 @@ function SupportChatWidget() {
 
 function FirstOrderOfferPopup() {
   const [visible, setVisible] = useState(false);
+  const [minimized, setMinimized] = useState(() => window.localStorage.getItem("everastone.firstOfferPopupClosed") === "true");
   const [email, setEmail] = useState("");
   const [done, setDone] = useState(false);
   useEffect(() => {
@@ -4883,6 +4932,7 @@ function FirstOrderOfferPopup() {
   const close = () => {
     window.localStorage.setItem("everastone.firstOfferPopupClosed", "true");
     setVisible(false);
+    setMinimized(true);
   };
   const unlock = () => {
     if (email && email.includes("@")) {
@@ -4890,8 +4940,16 @@ function FirstOrderOfferPopup() {
     }
     setDone(true);
     window.localStorage.setItem("everastone.firstOfferPopupClosed", "true");
+    setMinimized(true);
   };
-  if (!visible) return null;
+  if (!visible) {
+    return minimized ? (
+      <button className="first-offer-mini" type="button" onClick={() => setVisible(true)} aria-label={`Open first order ${FIRST_ORDER_DISCOUNT_PERCENT}% offer`}>
+        <strong>{FIRST_ORDER_DISCOUNT_PERCENT}%</strong>
+        <span>OFF</span>
+      </button>
+    ) : null;
+  }
   return (
     <div className="first-offer-popup-backdrop" role="presentation">
       <section className="first-offer-popup" role="dialog" aria-modal="true" aria-label="Unlock first order offer">
@@ -4899,14 +4957,14 @@ function FirstOrderOfferPopup() {
         {done ? (
           <>
             <span className="eyebrow">OFFER UNLOCKED</span>
-            <h2>Your 10% first-order offer is ready.</h2>
+            <h2>Your {FIRST_ORDER_DISCOUNT_PERCENT}% first-order offer is ready.</h2>
             <p>Apply it at checkout and continue exploring Everastone pieces.</p>
-            <button className="primary-btn full" onClick={() => setVisible(false)}>Continue Shopping</button>
+            <button className="primary-btn full" onClick={close}>Continue Shopping</button>
           </>
         ) : (
           <>
             <span className="eyebrow">FIRST ORDER OFFER</span>
-            <h2>Unlock 10% off your first order</h2>
+            <h2>Unlock {FIRST_ORDER_DISCOUNT_PERCENT}% off your first order</h2>
             <p>Leave your email to save your first-order offer and receive order support reminders.</p>
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
             <div className="first-offer-actions">
@@ -5106,7 +5164,7 @@ export function App() {
       content: contentMetaMap[contentKey]?.title ?? "Brand Content | everastone"
     };
     const description = selectedProduct && page === "product"
-      ? `${selectedProduct.name ?? shapeLabel(selectedProduct.shape)} supports secure PayPal checkout, a 10% first-order offer, and global air delivery.`
+      ? `${selectedProduct.name ?? shapeLabel(selectedProduct.shape)} supports secure PayPal checkout, a ${FIRST_ORDER_DISCOUNT_PERCENT}% first-order offer, and global air delivery.`
       : activeBlogPost && page === "blog"
         ? activeBlogPost.metaDescription || activeBlogPost.subtitle || activeBlogPost.cover
       : page === "content"
