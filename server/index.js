@@ -10,6 +10,26 @@ const corsOrigin = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
   : true;
 
+const supportedDisplayCurrencies = {
+  GB: { country: "GB", currency: "GBP", locale: "en-GB", rate: 0.79 },
+  FR: { country: "FR", currency: "EUR", locale: "fr-FR", rate: 0.92 },
+  DE: { country: "DE", currency: "EUR", locale: "de-DE", rate: 0.92 },
+  SA: { country: "SA", currency: "SAR", locale: "ar-SA", rate: 3.75 }
+};
+
+function detectCountryFromHeaders(req) {
+  const candidates = [
+    req.headers["x-vercel-ip-country"],
+    req.headers["cf-ipcountry"],
+    req.headers["cloudfront-viewer-country"],
+    req.headers["x-country-code"],
+    req.headers["x-appengine-country"],
+    req.query?.country
+  ];
+  const value = candidates.find(Boolean);
+  return String(Array.isArray(value) ? value[0] : value || "").trim().toUpperCase();
+}
+
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "25mb" }));
@@ -763,6 +783,18 @@ app.get("/api/health", (_req, res) => {
     service: "everastone-commerce-api",
     supabase: Boolean(supabaseRestUrl && (supabaseAnonKey || supabaseServiceRoleKey))
   });
+});
+
+app.get("/api/visitor-currency", (req, res) => {
+  const country = detectCountryFromHeaders(req);
+  const profile = supportedDisplayCurrencies[country] || {
+    country: country || "US",
+    currency: "USD",
+    locale: "en-US",
+    rate: 1
+  };
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.json({ data: { ...profile, source: supportedDisplayCurrencies[country] ? "geo-header" : "default" } });
 });
 
 app.get("/sitemap.xml", async (_req, res) => {

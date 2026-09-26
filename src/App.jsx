@@ -27,7 +27,7 @@ import {
   X,
   Youtube
 } from "lucide-react";
-import { addMyFavorite, capturePayPalOrder, createPayPalOrder, createStorefrontOrder, deleteBlogPostApi, deleteMyAddress, deleteStorefrontProduct, fetchAdminAnalyticsSummary, fetchAdminOrders, fetchAuthUser, fetchBlogPosts, fetchMyAddresses, fetchMyFavorites, fetchMyOrders, fetchStorefrontProducts, getAdminApiToken, getGoogleSignInUrl, lookupGuestOrders, saveBlogPostApi, saveMyAddress, saveStorefrontProduct, sendPasswordRecovery, setAdminApiToken, signInWithEmail, signUpWithEmail, trackAnalyticsEvent, updateAdminOrder, uploadProductImage } from "./api.js";
+import { addMyFavorite, capturePayPalOrder, createPayPalOrder, createStorefrontOrder, deleteBlogPostApi, deleteMyAddress, deleteStorefrontProduct, fetchAdminAnalyticsSummary, fetchAdminOrders, fetchAuthUser, fetchBlogPosts, fetchMyAddresses, fetchMyFavorites, fetchMyOrders, fetchStorefrontProducts, fetchVisitorCurrencyInfo, getAdminApiToken, getGoogleSignInUrl, lookupGuestOrders, saveBlogPostApi, saveMyAddress, saveStorefrontProduct, sendPasswordRecovery, setAdminApiToken, signInWithEmail, signUpWithEmail, trackAnalyticsEvent, updateAdminOrder, uploadProductImage } from "./api.js";
 import {
   categories,
   certificates,
@@ -43,10 +43,149 @@ import {
 } from "./data.js";
 import everastoneLogoMark from "./assets/everastone-logo-mark-small.png";
 
-const money = (value) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
-const preciseMoney = (value) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+const DISPLAY_CURRENCY_STORAGE_KEY = "everastone.displayCurrency";
+const EXCHANGE_RATE_STORAGE_KEY = "everastone.exchangeRates.usd";
+const EXCHANGE_RATE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_CURRENCY_PROFILE = { country: "US", currency: "USD", locale: "en-US", rate: 1, source: "default" };
+const SUPPORTED_DISPLAY_CURRENCIES = {
+  GB: { country: "GB", currency: "GBP", locale: "en-GB", rate: 0.79, countryName: "United Kingdom" },
+  FR: { country: "FR", currency: "EUR", locale: "fr-FR", rate: 0.92, countryName: "France" },
+  DE: { country: "DE", currency: "EUR", locale: "de-DE", rate: 0.92, countryName: "Germany" },
+  SA: { country: "SA", currency: "SAR", locale: "ar-SA", rate: 3.75, countryName: "Saudi Arabia" }
+};
+const COUNTRY_NAME_TO_CODE = {
+  "United Kingdom": "GB",
+  France: "FR",
+  Germany: "DE",
+  "Saudi Arabia": "SA",
+  "United States": "US"
+};
+
+function safeReadJson(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeWriteJson(key, value) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore private browsing / blocked storage.
+  }
+}
+
+function getCountryFromLocale(locale = "") {
+  const match = String(locale).match(/[-_]([A-Z]{2})\b/i);
+  return match ? match[1].toUpperCase() : "";
+}
+
+function getCurrencyProfileFromCountry(country = "") {
+  const code = String(country || "").trim().toUpperCase();
+  return SUPPORTED_DISPLAY_CURRENCIES[code] || DEFAULT_CURRENCY_PROFILE;
+}
+
+function getBrowserCurrencyProfile() {
+  if (typeof window === "undefined") return DEFAULT_CURRENCY_PROFILE;
+  const languageCountry = (navigator.languages || [navigator.language])
+    .map(getCountryFromLocale)
+    .find((country) => SUPPORTED_DISPLAY_CURRENCIES[country]);
+  if (languageCountry) return { ...SUPPORTED_DISPLAY_CURRENCIES[languageCountry], source: "browser-locale" };
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  if (/London|Guernsey|Jersey|Isle_of_Man/i.test(timezone)) return { ...SUPPORTED_DISPLAY_CURRENCIES.GB, source: "browser-timezone" };
+  if (/Paris/i.test(timezone)) return { ...SUPPORTED_DISPLAY_CURRENCIES.FR, source: "browser-timezone" };
+  if (/Berlin/i.test(timezone)) return { ...SUPPORTED_DISPLAY_CURRENCIES.DE, source: "browser-timezone" };
+  if (/Riyadh/i.test(timezone)) return { ...SUPPORTED_DISPLAY_CURRENCIES.SA, source: "browser-timezone" };
+  return DEFAULT_CURRENCY_PROFILE;
+}
+
+function normalizeCurrencyProfile(profile = {}) {
+  const countryProfile = getCurrencyProfileFromCountry(profile.country);
+  const currency = String(profile.currency || countryProfile.currency || "USD").toUpperCase();
+  const locale = profile.locale || countryProfile.locale || "en-US";
+  const fallbackRate = Number(countryProfile.rate) || 1;
+  const rate = Math.max(0, Number(profile.rate) || fallbackRate);
+  return {
+    ...countryProfile,
+    ...profile,
+    currency,
+    locale,
+    rate,
+    country: String(profile.country || countryProfile.country || "US").toUpperCase()
+  };
+}
+
+function readInitialCurrencyProfile() {
+  const stored = safeReadJson(DISPLAY_CURRENCY_STORAGE_KEY, null);
+  return stored?.currency ? normalizeCurrencyProfile(stored) : getBrowserCurrencyProfile();
+}
+
+let activeCurrencyProfile = readInitialCurrencyProfile();
+
+function getActiveCurrencyProfile() {
+  return activeCurrencyProfile;
+}
+
+function setActiveCurrencyProfile(profile) {
+  activeCurrencyProfile = normalizeCurrencyProfile(profile);
+  safeWriteJson(DISPLAY_CURRENCY_STORAGE_KEY, activeCurrencyProfile);
+  return activeCurrencyProfile;
+}
+
+async function fetchLiveUsdRates() {
+  const cached = safeReadJson(EXCHANGE_RATE_STORAGE_KEY, null);
+  if (cached?.timestamp && Date.now() - cached.timestamp < EXCHANGE_RATE_MAX_AGE_MS && cached.rates) {
+    return cached.rates;
+  }
+  const response = await fetch("https://open.er-api.com/v6/latest/USD", { cache: "no-store" });
+  const payload = await response.json();
+  if (!response.ok || !payload?.rates) throw new Error("Exchange rate request failed.");
+  safeWriteJson(EXCHANGE_RATE_STORAGE_KEY, { timestamp: Date.now(), rates: payload.rates });
+  return payload.rates;
+}
+
+async function resolveDisplayCurrencyProfile() {
+  const browserProfile = getBrowserCurrencyProfile();
+  let profile = browserProfile;
+  try {
+    const serverProfile = await fetchVisitorCurrencyInfo();
+    if (serverProfile?.currency && serverProfile.currency !== "USD") {
+      profile = normalizeCurrencyProfile(serverProfile);
+    }
+  } catch {
+    profile = browserProfile;
+  }
+  if (profile.currency && profile.currency !== "USD") {
+    try {
+      const rates = await fetchLiveUsdRates();
+      if (Number(rates?.[profile.currency]) > 0) {
+        profile = { ...profile, rate: Number(rates[profile.currency]), source: `${profile.source || "geo"}+live-rate` };
+      }
+    } catch {
+      profile = { ...profile, source: `${profile.source || "geo"}+fallback-rate` };
+    }
+  }
+  return setActiveCurrencyProfile(profile);
+}
+
+function formatDisplayMoney(value, options = {}) {
+  const profile = getActiveCurrencyProfile();
+  const converted = (Number(value) || 0) * (Number(profile.rate) || 1);
+  return new Intl.NumberFormat(profile.locale || "en-US", {
+    style: "currency",
+    currency: profile.currency || "USD",
+    minimumFractionDigits: options.minimumFractionDigits ?? 0,
+    maximumFractionDigits: options.maximumFractionDigits ?? 0
+  }).format(converted);
+}
+
+const money = (value) => formatDisplayMoney(value, { maximumFractionDigits: 0 });
+const preciseMoney = (value) => formatDisplayMoney(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FIRST_ORDER_DISCOUNT_RATE = 0.2;
 const FIRST_ORDER_DISCOUNT_PERCENT = Math.round(FIRST_ORDER_DISCOUNT_RATE * 100);
 const getFirstOrderDiscountAmount = (amount) => Math.round((Number(amount) || 0) * FIRST_ORDER_DISCOUNT_RATE * 100) / 100;
@@ -2002,11 +2141,12 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
   const [paypalReady, setPaypalReady] = useState(false);
   const paypalButtonsRef = useRef(null);
   const localOrderRef = useRef(null);
+  const initialCurrencyProfile = getActiveCurrencyProfile();
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
     email: "",
-    country: "United States",
+    country: initialCurrencyProfile.countryName || "United States",
     addressLine1: "",
     addressLine2: "",
     city: "",
@@ -2032,7 +2172,12 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
       }).catch(() => {});
     }
   }, []);
-  const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const updateForm = (key, value) => {
+    if (key === "country" && COUNTRY_NAME_TO_CODE[value]) {
+      setActiveCurrencyProfile(getCurrencyProfileFromCountry(COUNTRY_NAME_TO_CODE[value]));
+    }
+    setForm((current) => ({ ...current, [key]: value }));
+  };
   const validateCheckout = () => {
     if (!cart.length) return "Your bag is empty. Please add a piece before checkout.";
     if (!form.email || !form.email.includes("@") || !form.addressLine1 || !form.city || !form.postalCode) {
@@ -2076,7 +2221,11 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
     metadata: {
       logisticsInsurance: insuranceSelected,
       logisticsInsuranceFee: shipping,
-      taxCoveredByPlatform: true
+      taxCoveredByPlatform: true,
+      displayCurrency: getActiveCurrencyProfile().currency,
+      displayExchangeRate: getActiveCurrencyProfile().rate,
+      displayCountry: getActiveCurrencyProfile().country,
+      settlementCurrency: "USD"
     }
   });
   const submitOrder = async () => {
@@ -2217,7 +2366,13 @@ function Checkout({ cart, onSubmitOrder, openContent }) {
             <input placeholder="First name" value={form.firstName} onChange={(event) => updateForm("firstName", event.target.value)} />
             <input placeholder="Last name" value={form.lastName} onChange={(event) => updateForm("lastName", event.target.value)} />
             <input placeholder="Email" type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} />
-            <select value={form.country} onChange={(event) => updateForm("country", event.target.value)}><option>United States</option><option>United Kingdom</option></select>
+            <select value={form.country} onChange={(event) => updateForm("country", event.target.value)}>
+              <option>United States</option>
+              <option>United Kingdom</option>
+              <option>France</option>
+              <option>Germany</option>
+              <option>Saudi Arabia</option>
+            </select>
             <input placeholder="Street address" className="wide" value={form.addressLine1} onChange={(event) => updateForm("addressLine1", event.target.value)} />
             <input placeholder="Apartment, suite, unit" className="wide" value={form.addressLine2} onChange={(event) => updateForm("addressLine2", event.target.value)} />
             <input placeholder="City" value={form.city} onChange={(event) => updateForm("city", event.target.value)} />
@@ -5026,6 +5181,7 @@ export function App() {
   const [serviceCount, setServiceCount] = useState(8659);
   const [socialLinks, setSocialLinks] = useState(() => readSocialLinks());
   const [blogPosts, setBlogPosts] = useState(() => readBlogPosts());
+  const [, setDisplayCurrencyProfile] = useState(() => getActiveCurrencyProfile());
   const selectedProduct = diamonds.find((item) => item.id === selectedId) ?? diamonds[0];
   const activeBlogPost = blogSlug ? blogPosts.find((post) => (post.slug || slugify(post.title) || post.id) === blogSlug) : null;
   const syncProductFromPath = () => {
@@ -5088,6 +5244,18 @@ export function App() {
     return () => {
       window.removeEventListener("popstate", onPopState);
       window.removeEventListener("storage", onSharedProducts);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveDisplayCurrencyProfile()
+      .then((profile) => {
+        if (!cancelled) setDisplayCurrencyProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
     };
   }, []);
 

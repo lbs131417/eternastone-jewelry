@@ -49,6 +49,12 @@ export async function fetchStorefrontProducts() {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
+export async function fetchVisitorCurrencyInfo() {
+  const response = await apiFetch("/visitor-currency");
+  const payload = await parseJsonResponse(response);
+  return payload.data || {};
+}
+
 export async function saveStorefrontProduct(product) {
   const response = await apiFetch("/products", {
     method: "POST",
